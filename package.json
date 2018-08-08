@@ -41,5 +41,12 @@
       "name": "prdn",
       "email": "paolo@bitfinex.com"
     }
-  ]
+  ],
+  "scripts": {
+    "test": "npm run lint && npm run unit",
+    "unit": "mocha",
+    "lint": "standard",
+    "lintFix": "standard --fix index.js",
+    "startSimulatedEnviroment": "node test/simulate/simulate-enviroment.js"
+  }
 }

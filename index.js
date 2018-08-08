@@ -15,19 +15,6 @@ class GoogleAuth extends Base {
     this.init()
   }
 
-  //loginAdmin (params, ip, cb) {
-  //  const keys = _.keysIn(params)
-   // const googleLoginKeys = keys.includes('access_token') &&
-    //  keys.includes('token_type') &&
-     // keys.includes('expiry_date')
-
-    //if (googleLoginKeys) {
-      //this._loginAdminGoogle(params, ip, cb)
-    //} else {
-      //return cb(new Error('AUTH_FAC_LOGIN_KEYS_MISSING'))
-    //}
-  //}
-  // TODO: remove non google login
   loginAdmin (params, ip, cb) {
     const keys = _.keysIn(params)
     const passLoginKeys = keys.includes('username') &&
@@ -41,7 +28,7 @@ class GoogleAuth extends Base {
         ? this._loginAdminPass(params, ip, cb)
         : this._loginAdminGoogle(params, ip, cb)
     } else {
-      return cb(new Error('CORE_LOGIN_KEYS_MISSING'))
+      return cb(new Error('AUTH_FAC_LOGIN_KEYS_MISSING'))
     }
   }
 
@@ -140,8 +127,17 @@ class GoogleAuth extends Base {
   }
 
   _whiteListEmail (email) {
-    const {WHITE_LIST_EMAILS} = this.conf
-    return WHITE_LIST_EMAILS.includes(email)
+    const { ADM_USERS } = this.conf
+    let valid = false
+    let level
+    _.forEach(ADM_USERS, user => {
+      if (user.email === email) {
+        valid = true
+        if (valid) level = user.level
+        return false
+      }
+    })
+    return { valid, level }
   }
 
   // TODO: Remove basicAuthcheck
@@ -153,14 +149,30 @@ class GoogleAuth extends Base {
   }
 
   basicAuthAdmLogCheck (email, password) {
-    const {BASIC_AUTH_ADM_USERS} = this.conf
+    const { ADM_USERS } = this.conf
     let valid = false
-    _.forEach(BASIC_AUTH_ADM_USERS, (user) => {
-      if (user.email === email) {
-        valid = (user.password === password)
+    let level
+    _.forEach(ADM_USERS, user => {
+      if (user.email === email && user.password) {
+        valid = user.password === password
+        if (valid) level = user.level
         return false
       }
     })
+    return { valid, level }
+  }
+
+  checkAdmAccessLevel (admin, level) {
+    let valid = false
+    if (admin) {
+      const { ADM_USERS } = this.conf
+      _.forEach(ADM_USERS, user => {
+        if (user.email === admin) {
+          valid = user.level <= level
+          return false
+        }
+      })
+    }
     return valid
   }
 }
