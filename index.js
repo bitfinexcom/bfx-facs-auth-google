@@ -13,8 +13,6 @@ class GoogleAuth extends Base {
     this._hasConf = true
 
     this.init()
-
-    console.log(this)
   }
 
   loginAdmin (args, cb) {
