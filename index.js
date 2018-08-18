@@ -15,21 +15,27 @@ class GoogleAuth extends Base {
     this.init()
   }
 
-  loginAdmin (params, ip, cb) {
-    const keys = _.keysIn(params)
-    const passLoginKeys = keys.includes('username') &&
-      keys.includes('password')
-    const googleLoginKeys = keys.includes('access_token') &&
-      keys.includes('token_type') &&
-      keys.includes('expiry_date')
+  loginAdmin (args, cb) {
+    console.log('ok here')
+    const { user, google, ip } = args
 
-    if (passLoginKeys || googleLoginKeys) {
-      return (passLoginKeys)
-        ? this._loginAdminPass(params, ip, cb)
-        : this._loginAdminGoogle(params, ip, cb)
-    } else {
-      return cb(new Error('AUTH_FAC_LOGIN_KEYS_MISSING'))
-    }
+    console.log('here2', args, cb)
+
+    const complete = (user)
+      ? ['username', 'password'].every(k => k in user)
+      : ['access_token', 'token_type', 'expiry_date'].every(k => k in google)
+    if (!complete) return cb(new Error('AUTH_FAC_LOGIN_KEYS_MISSING'))
+
+    return (user)
+      ? this._loginAdminPass(user, ip, cb)
+      : this._loginAdminGoogle(google, ip, cb)
+  }
+
+  _loginAdminPass (params, ip, cb) {
+    const valid = this.basicAuthAdmLogCheck(params.username, params.password)
+    return (valid)
+      ? this._createAdminToken(params.username, ip, cb)
+      : cb(new Error('KYC_LOGIN_INCORRECT_USERNAME_PASSWORD'))
   }
 
   async _loginAdminGoogle (params, ip, cb) {
@@ -138,14 +144,6 @@ class GoogleAuth extends Base {
       }
     })
     return { valid, level }
-  }
-
-  // TODO: Remove basicAuthcheck
-  _loginAdminPass (params, ip, cb) {
-    const valid = this.basicAuthAdmLogCheck(params.username, params.password)
-    return (valid)
-      ? this._createAdminToken(params.username, ip, cb)
-      : cb(new Error('KYC_LOGIN_INCORRECT_USERNAME_PASSWORD'))
   }
 
   basicAuthAdmLogCheck (email, password) {
