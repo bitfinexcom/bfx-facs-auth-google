@@ -63,14 +63,14 @@ class GoogleAuth extends Base {
   }
 
   _tokenKey (query) {
-    return `admtokens:${query.token}:${query.ip}`
+    return `adminTokens:${query.token}:${query.ip}`
   }
 
   _createUniqueAndExpireDbToken (query) {
     const ctx = this.caller
     if (ctx.dbMongo_m0) { // kyc-ui
       const mc = ctx.dbMongo_m0.db
-      const collection = 'admTokens'
+      const collection = 'adminTokens'
       return new Promise((resolve, reject) => {
         mc.collection(collection)
           .insertOne(query, (err, res) => {
