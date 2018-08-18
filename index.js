@@ -13,13 +13,12 @@ class GoogleAuth extends Base {
     this._hasConf = true
 
     this.init()
+
+    console.log(this)
   }
 
   loginAdmin (args, cb) {
-    console.log('ok here')
     const { user, google, ip } = args
-
-    console.log('here2', args, cb)
 
     const complete = (user)
       ? ['username', 'password'].every(k => k in user)
