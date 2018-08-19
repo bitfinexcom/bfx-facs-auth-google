@@ -83,7 +83,7 @@ class GoogleAuth extends Base {
       const key = this._tokenKey(query)
       ctx.redis_gc0.cli_rw.multi([
         ['set', key, query],
-        ['expire', key, query.expiresAtSeconds]
+        ['expire', key, query.expires_at]
       ])
     }
   }
