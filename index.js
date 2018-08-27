@@ -81,10 +81,16 @@ class GoogleAuth extends Base {
       })
     } else { // redis
       const key = this._tokenKey(query)
-      ctx.redis_gc0.cli_rw.multi([
-        ['set', key, query],
-        ['expire', key, query.expires_at]
-      ])
+      const expires_at = (query.expires_at - new Date()) / 1000 // eslint-disable-line camelcase
+      return new Promise((resolve, reject) => {
+        ctx.redis_gc0.cli_rw.multi([
+          ['set', key, JSON.stringify(query)],
+          ['expire', key, expires_at] // eslint-disable-line camelcase
+        ]).exec((err, result) => {
+          if (err) return reject(err)
+          resolve()
+        })
+      })
     }
   }
 
@@ -98,15 +104,16 @@ class GoogleAuth extends Base {
       : false
   }
 
-  async checkAdminRedis (authToken) {
-    const ctx = this.ctx
+  async checkAdminRedis (authToken, level = 0) {
+    const ctx = this.caller
     const preCheck = this.preAdminTokenCheck(authToken)
     if (!preCheck) return false
     const token = authToken[0]
     const ip = authToken[1].ip
     const key = this._tokenKey({ token, ip })
-    const data = await ctx.redis_gc0.cli_rw.get(key)
-    return !!data && data.username && data.username.length > 0
+    const json = await ctx.redis_gc0.cli_rw.get(key)
+    const data = JSON.parse(json)
+    return data && this.checkAdmAccessLevel(data.username, level)
   }
 
   _getOAuth2Client () {
