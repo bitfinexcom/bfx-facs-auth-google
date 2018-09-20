@@ -99,7 +99,7 @@ class GoogleAuth extends Base {
   }
 
   preAdminTokenCheck (authToken) {
-    return (authToken && authToken.length === 2)
+    return (authToken && authToken.length === 2 && authToken[0])
       ? authToken[0].startsWith('ADM')
       : false
   }
