@@ -1,0 +1,16 @@
+{
+  "a0": {
+    "google" : {
+      "clientId": "",
+      "clientSecret": ""
+    },
+    "GOOGLE_WHITE_LIST_EMAILS" : [
+    ],
+    "BASIC_AUTH_ADM_USERS" : [
+      {
+        "email": "@something",
+        "password": "" 
+      }
+    ]
+  }
+}
