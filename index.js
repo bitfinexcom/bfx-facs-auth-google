@@ -11,6 +11,7 @@ class GoogleAuth extends Base {
 
     this.name = 'auth-google'
     this._hasConf = true
+    this.useRedis = opts.useRedis || false
 
     this.init()
 
@@ -69,7 +70,7 @@ class GoogleAuth extends Base {
 
   _createUniqueAndExpireDbToken (query) {
     const ctx = this.caller
-    if (ctx.dbMongo_m0) { // mongodb
+    if (!this.useRedis) { // mongodb
       const mc = ctx.dbMongo_m0.db
       const collection = 'adminTokens'
       return new Promise((resolve, reject) => {
