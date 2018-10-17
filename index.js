@@ -12,6 +12,8 @@ class GoogleAuth extends Base {
     this.name = 'auth-google'
     this._hasConf = true
     this.useRedis = opts.useRedis || false
+    this.mongoFac = opts.mongoFac || ctx.dbMongo_m0
+    this.redisFac = opts.redisFac || ctx.redis_gc0
 
     this.init()
 
@@ -35,7 +37,7 @@ class GoogleAuth extends Base {
     const {valid, level} = this.basicAuthAdmLogCheck(params.username, params.password)
     return (valid)
       ? this._createAdminToken(params.username, ip, level, cb)
-      : cb(new Error('KYC_LOGIN_INCORRECT_USERNAME_PASSWORD'))
+      : cb(new Error('AUTH_FAC_LOGIN_INCORRECT_USERNAME_PASSWORD'))
   }
 
   async _loginAdminGoogle (params, ip, cb) {
@@ -71,7 +73,7 @@ class GoogleAuth extends Base {
   _createUniqueAndExpireDbToken (query) {
     const ctx = this.caller
     if (!this.useRedis) { // mongodb
-      const mc = ctx.dbMongo_m0.db
+      const mc = this.mongoFac.db
       const collection = 'adminTokens'
       return new Promise((resolve, reject) => {
         mc.collection(collection)
@@ -84,7 +86,7 @@ class GoogleAuth extends Base {
       const key = this._tokenKey(query)
       const expires_at = (query.expires_at - new Date()) / 1000 // eslint-disable-line camelcase
       return new Promise((resolve, reject) => {
-        ctx.redis_gc0.cli_rw.multi([
+        this.redisFac.cli_rw.multi([
           ['set', key, JSON.stringify(query)],
           ['expire', key, expires_at] // eslint-disable-line camelcase
         ]).exec((err, result) => {
@@ -112,7 +114,7 @@ class GoogleAuth extends Base {
     const token = authToken[0]
     const ip = authToken[1].ip
     const key = this._tokenKey({ token, ip })
-    const json = await ctx.redis_gc0.cli_rw.get(key)
+    const json = await this.redisFac.cli_rw.get(key)
     const data = JSON.parse(json)
     return data && this.checkAdmAccessLevel(data.username, level)
   }
