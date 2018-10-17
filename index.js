@@ -35,7 +35,7 @@ class GoogleAuth extends Base {
     const {valid, level} = this.basicAuthAdmLogCheck(params.username, params.password)
     return (valid)
       ? this._createAdminToken(params.username, ip, level, cb)
-      : cb(new Error('AUTH_FAC_LOGIN_INCORRECT_USERNAME_PASSWORD'))
+      : cb(new Error('KYC_LOGIN_INCORRECT_USERNAME_PASSWORD'))
   }
 
   async _loginAdminGoogle (params, ip, cb) {
@@ -112,14 +112,8 @@ class GoogleAuth extends Base {
     const token = authToken[0]
     const ip = authToken[1].ip
     const key = this._tokenKey({ token, ip })
-    let data = null
-    try {
-      const json = await ctx.redis_gc0.cli_rw.get(key)
-      data = JSON.parse(json)
-    } catch (err) {
-      console.error('unexpected redis error', err)
-      return false
-    }
+    const json = await ctx.redis_gc0.cli_rw.get(key)
+    const data = JSON.parse(json)
     return data && this.checkAdmAccessLevel(data.username, level)
   }
 
