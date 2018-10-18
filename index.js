@@ -12,8 +12,8 @@ class GoogleAuth extends Base {
     this.name = 'auth-google'
     this._hasConf = true
     this.useRedis = opts.useRedis || false
-    this.mongoFac = opts.mongoFac || ctx.dbMongo_m0
-    this.redisFac = opts.redisFac || ctx.redis_gc0
+    this.mongoFac = opts.mongoFac || caller.dbMongo_m0
+    this.redisFac = opts.redisFac || caller.redis_gc0
 
     this.init()
 
