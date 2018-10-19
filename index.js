@@ -3,7 +3,7 @@
 const _ = require('lodash')
 const Base = require('bfx-facs-base')
 const uuidv4 = require('uuid/v4')
-const {google} = require('googleapis')
+const { google } = require('googleapis')
 
 class GoogleAuth extends Base {
   constructor (caller, opts, ctx) {
@@ -35,7 +35,7 @@ class GoogleAuth extends Base {
   }
 
   _loginAdminPass (params, ip, cb) {
-    const {valid, level} = this.basicAuthAdmLogCheck(params.username, params.password)
+    const { valid, level } = this.basicAuthAdmLogCheck(params.username, params.password)
     return (valid)
       ? this._createAdminToken(params.username, ip, level, cb)
       : cb(new Error('AUTH_FAC_LOGIN_INCORRECT_USERNAME_PASSWORD'))
@@ -44,7 +44,7 @@ class GoogleAuth extends Base {
   async _loginAdminGoogle (params, ip, cb) {
     try {
       const email = await this.googleEmailFromToken(params)
-      const {valid, level} = this._validAdminUserGoogleEmail(email)
+      const { valid, level } = this._validAdminUserGoogleEmail(email)
       return (valid)
         ? this._createAdminToken(email, ip, level, cb)
         : cb(new Error('AUTH_FAC_ONLY_BITFINEX_ACCOUNTS_ARE_ALLOW'))
@@ -72,7 +72,6 @@ class GoogleAuth extends Base {
   }
 
   _createUniqueAndExpireDbToken (query) {
-    const ctx = this.caller
     if (!this.useRedis) { // mongodb
       const mc = this.mongoFac.db
       const collection = 'adminTokens'
@@ -109,7 +108,6 @@ class GoogleAuth extends Base {
   }
 
   async checkAdminRedis (authToken, level = 0) {
-    const ctx = this.caller
     const preCheck = this.preAdminTokenCheck(authToken)
     if (!preCheck) return false
     const token = authToken[0]
@@ -121,7 +119,7 @@ class GoogleAuth extends Base {
   }
 
   _getOAuth2Client () {
-    const {clientId, clientSecret} = this.conf
+    const { clientId, clientSecret } = this.conf
     return new google.auth.OAuth2(
       clientId,
       clientSecret
@@ -132,7 +130,7 @@ class GoogleAuth extends Base {
     return new Promise(async (resolve, reject) => {
       const oAuth2Client = await this._getOAuth2Client()
       oAuth2Client.setCredentials(token)
-      const oauth2 = google.oauth2({version: 'v2', auth: oAuth2Client})
+      const oauth2 = google.oauth2({ version: 'v2', auth: oAuth2Client })
       oauth2.userinfo.v2.me.get(
         (err, data) => {
           if (err) reject(new Error('AUTH_FAC_ERROR_ASK_EMAIL:' + err.toString()))
