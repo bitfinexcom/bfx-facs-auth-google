@@ -17,6 +17,7 @@ class GoogleAuth extends Base {
 
     this.init()
 
+    if (opts.conf) this.conf = opts.conf
     this.checkAdmAccessLevel = this.checkAdmAccessLevel.bind(this)
   }
 
