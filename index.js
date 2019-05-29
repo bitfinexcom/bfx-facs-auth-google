@@ -172,6 +172,13 @@ class GoogleAuth extends Base {
     return valid
   }
 
+  checkAdmIsReadOnly (adminEmail) {
+    const admin = this._getAdmin(adminEmail)
+    if (!admin) throw new Error('Searched admin was not found')
+
+    return !!admin.readOnly
+  }
+
   checkAdmHasBlockPrivilege (adminEmail) {
     const admin = this._getAdmin(adminEmail)
     if (!admin) throw new Error('Searched admin was not found')
