@@ -1,6 +1,5 @@
 'use strict'
 
-const _ = require('lodash')
 const Base = require('bfx-facs-base')
 const uuidv4 = require('uuid/v4')
 const { google } = require('googleapis')
@@ -140,45 +139,63 @@ class GoogleAuth extends Base {
   }
 
   _whiteListEmail (email) {
-    const { ADM_USERS } = this.conf
-    let valid = false
-    let level
-    _.forEach(ADM_USERS, user => {
-      if (user.email === email) {
-        valid = true
-        if (valid) level = user.level
-        return false
-      }
-    })
-    return { valid, level }
+    const admin = this._getAdmin(email)
+
+    if (!admin) return { valid: false }
+
+    return {
+      valid: true,
+      level: admin.level
+    }
   }
 
   basicAuthAdmLogCheck (email, password) {
-    const { ADM_USERS } = this.conf
-    let valid = false
-    let level
-    _.forEach(ADM_USERS, user => {
-      if (user.email === email && user.password) {
-        valid = user.password === password
-        if (valid) level = user.level
-        return false
-      }
-    })
-    return { valid, level }
+    const admin = this._getAdmin(email)
+
+    if (!(
+      admin &&
+      admin.password && // password cant be empty or false
+      admin.password === password
+    )) {
+      return { valid: false }
+    }
+
+    return {
+      valid: true,
+      level: admin.level
+    }
   }
 
-  checkAdmAccessLevel (admin, level) {
-    let valid = false
-    if (admin) {
-      const { ADM_USERS } = this.conf
-      _.forEach(ADM_USERS, user => {
-        if (user.email === admin) {
-          valid = user.level <= level
-          return false
-        }
-      })
-    }
+  checkAdmAccessLevel (adminEmail, level) {
+    const admin = this._getAdmin(adminEmail)
+    const valid = !!admin && admin.level <= level
     return valid
+  }
+
+  checkAdmIsReadOnly (adminEmail) {
+    const admin = this._getAdmin(adminEmail)
+    if (!admin) throw new Error('Searched admin was not found')
+
+    return !!admin.readOnly
+  }
+
+  checkAdmHasBlockPrivilege (adminEmail) {
+    const admin = this._getAdmin(adminEmail)
+    if (!admin) throw new Error('Searched admin was not found')
+
+    return !!(admin.level === 0 || admin.blockPrivilege)
+  }
+
+  _getAdmin (email) {
+    if (!email) return false
+
+    const admins = this.conf.ADM_USERS
+
+    for (const adm of admins) {
+      if (adm.email === email) return adm
+    }
+
+    return false
   }
 }
 
