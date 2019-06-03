@@ -1,6 +1,6 @@
 {
   "name": "bfx-facs-auth-google",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": false,
   "description": "Bitfinex Google Oath Facility",
   "author": {
@@ -14,7 +14,7 @@
   "dependencies": {
     "async": "^2.6.0",
     "bfx-facs-base": "git+https://github.com/bitfinexcom/bfx-facs-base.git",
-    "googleapis": "^32.0.0",
+    "googleapis": "^40.0.0",
     "uuid": "^3.2.1"
   },
   "engine": {
