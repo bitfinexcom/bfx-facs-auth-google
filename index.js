@@ -35,27 +35,27 @@ class GoogleAuth extends Base {
 
   _loginAdminPass (params, ip, cb) {
     const {
-      valid, level, blockPrivilege
+      valid, level, extra
     } = this.basicAuthAdmLogCheck(params.username, params.password)
 
     return (valid)
-      ? this._createAdminToken(params.username, ip, level, blockPrivilege, cb)
+      ? this._createAdminToken(params.username, ip, level, extra, cb)
       : cb(new Error('AUTH_FAC_LOGIN_INCORRECT_USERNAME_PASSWORD'))
   }
 
   async _loginAdminGoogle (params, ip, cb) {
     try {
       const email = await this.googleEmailFromToken(params)
-      const { valid, level, blockPrivilege } = this._validAdminUserGoogleEmail(email)
+      const { valid, level, extra } = this._validAdminUserGoogleEmail(email)
       return (valid)
-        ? this._createAdminToken(email, ip, level, blockPrivilege, cb)
+        ? this._createAdminToken(email, ip, level, extra, cb)
         : cb(new Error('AUTH_FAC_ONLY_BITFINEX_ACCOUNTS_ARE_ALLOW'))
     } catch (e) {
       cb(new Error('AUTH_FAC_INCORRECT_GOOGLE_TOKEN'))
     }
   }
 
-  async _createAdminToken (user, ip, level, blockPrivilege, cb) {
+  async _createAdminToken (user, ip, level, extra = {}, cb) {
     const username = user
     const token = 'ADM-' + uuidv4()
     const exp = new Date()
@@ -63,7 +63,7 @@ class GoogleAuth extends Base {
     const query = { username, token, ip, level, expires_at: exp }
     try {
       await this._createUniqueAndExpireDbToken(query)
-      return cb(null, { username, token, level, blockPrivilege, expires_at: exp })
+      return cb(null, { username, token, level, ...extra, expires_at: exp })
     } catch (e) {
       return cb(new Error('AUTH_FAC_ADMIN_TOKEN_CREATE_ERROR'))
     }
@@ -141,33 +141,37 @@ class GoogleAuth extends Base {
     })
   }
 
-  _whiteListEmail (email) {
-    const admin = this._getAdmin(email)
+  _whiteListEmail (sentEmail) {
+    const admin = this._getAdmin(sentEmail)
 
     if (!admin) return { valid: false }
 
+    const { email, password, level, ...extra } = admin
+
     return {
       valid: true,
-      level: admin.level,
-      blockPrivilege: !!(admin.level === 0 || admin.blockPrivilege)
+      level,
+      extra
     }
   }
 
-  basicAuthAdmLogCheck (email, password) {
-    const admin = this._getAdmin(email)
+  basicAuthAdmLogCheck (sentEmail, sentPassword) {
+    const admin = this._getAdmin(sentEmail)
 
     if (!(
       admin &&
       admin.password && // password cant be empty or false
-      admin.password === password
+      admin.password === sentPassword
     )) {
       return { valid: false }
     }
 
+    const { email, password, level, ...extra } = admin
+
     return {
       valid: true,
-      level: admin.level,
-      blockPrivilege: !!(admin.level === 0 || admin.blockPrivilege)
+      level,
+      extra
     }
   }
 
