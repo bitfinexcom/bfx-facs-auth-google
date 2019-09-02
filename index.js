@@ -55,7 +55,7 @@ class GoogleAuth extends Base {
     }
   }
 
-  async _createAdminToken (user, ip, level, extra, cb) {
+  async _createAdminToken (user, ip, level, extra = {}, cb) {
     const username = user
     const token = 'ADM-' + uuidv4()
     const exp = new Date()
