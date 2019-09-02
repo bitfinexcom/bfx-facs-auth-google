@@ -34,25 +34,28 @@ class GoogleAuth extends Base {
   }
 
   _loginAdminPass (params, ip, cb) {
-    const { valid, level } = this.basicAuthAdmLogCheck(params.username, params.password)
+    const {
+      valid, level, blockPrivilege
+    } = this.basicAuthAdmLogCheck(params.username, params.password)
+
     return (valid)
-      ? this._createAdminToken(params.username, ip, level, cb)
+      ? this._createAdminToken(params.username, ip, level, blockPrivilege, cb)
       : cb(new Error('AUTH_FAC_LOGIN_INCORRECT_USERNAME_PASSWORD'))
   }
 
   async _loginAdminGoogle (params, ip, cb) {
     try {
       const email = await this.googleEmailFromToken(params)
-      const { valid, level } = this._validAdminUserGoogleEmail(email)
+      const { valid, level, blockPrivilege } = this._validAdminUserGoogleEmail(email)
       return (valid)
-        ? this._createAdminToken(email, ip, level, cb)
+        ? this._createAdminToken(email, ip, level, blockPrivilege, cb)
         : cb(new Error('AUTH_FAC_ONLY_BITFINEX_ACCOUNTS_ARE_ALLOW'))
     } catch (e) {
       cb(new Error('AUTH_FAC_INCORRECT_GOOGLE_TOKEN'))
     }
   }
 
-  async _createAdminToken (user, ip, level, cb) {
+  async _createAdminToken (user, ip, level, blockPrivilege, cb) {
     const username = user
     const token = 'ADM-' + uuidv4()
     const exp = new Date()
@@ -60,7 +63,7 @@ class GoogleAuth extends Base {
     const query = { username, token, ip, level, expires_at: exp }
     try {
       await this._createUniqueAndExpireDbToken(query)
-      return cb(null, { username, token, level, expires_at: exp })
+      return cb(null, { username, token, level, blockPrivilege, expires_at: exp })
     } catch (e) {
       return cb(new Error('AUTH_FAC_ADMIN_TOKEN_CREATE_ERROR'))
     }
@@ -145,7 +148,8 @@ class GoogleAuth extends Base {
 
     return {
       valid: true,
-      level: admin.level
+      level: admin.level,
+      blockPrivilege: !!(admin.level === 0 || admin.blockPrivilege)
     }
   }
 
@@ -162,7 +166,8 @@ class GoogleAuth extends Base {
 
     return {
       valid: true,
-      level: admin.level
+      level: admin.level,
+      blockPrivilege: !!(admin.level === 0 || admin.blockPrivilege)
     }
   }
 
