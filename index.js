@@ -121,22 +121,23 @@ class GoogleAuth extends Base {
   }
 
   _getOAuth2Client () {
-    const { clientId, clientSecret } = this.conf
+    const { clientId, clientSecret } = this.conf.google
     return new google.auth.OAuth2(
       clientId,
       clientSecret
     )
   }
 
-  googleEmailFromToken (token) {
-    return new Promise(async (resolve, reject) => {
-      const oAuth2Client = await this._getOAuth2Client()
-      oAuth2Client.setCredentials(token)
-      const oauth2 = google.oauth2({ version: 'v2', auth: oAuth2Client })
-      oauth2.userinfo.v2.me.get(
+  async googleEmailFromToken (token) {
+    const oAuth2Client = await this._getOAuth2Client()
+    oAuth2Client.setCredentials(token)
+    const oauth2 = google.oauth2({ version: 'v2', auth: oAuth2Client })
+
+    return new Promise((resolve, reject) => {
+      oauth2.userinfo.get(
         (err, data) => {
           if (err) reject(new Error('AUTH_FAC_ERROR_ASK_EMAIL:' + err.toString()))
-          else resolve(data.data.email)
+          else resolve(data && data.data && data.data.email)
         })
     })
   }
