@@ -196,6 +196,13 @@ class GoogleAuth extends Base {
     return !!(admin.level === 0 || admin.blockPrivilege)
   }
 
+  checkAdmHasAnalyticsPrivilege (adminEmail) {
+    const admin = this._getAdmin(adminEmail)
+    if (!admin) throw new Error('Searched admin was not found')
+
+    return !!(admin.level === 0 || admin.analyticsPrivilege)
+  }
+
   _getAdmin (email) {
     if (!email) return false
 
