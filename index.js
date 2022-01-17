@@ -1,12 +1,31 @@
 'use strict'
 
-const Base = require('bfx-facs-base')
+const assert = require('assert')
+const async = require('async')
+const bcrypt = require('bcrypt')
+const DbBase = require('bfx-facs-db-sqlite')
 const uuidv4 = require('uuid/v4')
 const { google } = require('googleapis')
 
-class GoogleAuth extends Base {
+const tableName = 'admin_users'
+
+class GoogleAuth extends DbBase {
   constructor (caller, opts, ctx) {
-    super(caller, opts, ctx)
+    const runSqlAtStart = [
+      `CREATE TABLE IF NOT EXISTS ${tableName} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT,
+        level INTEGER NOT NULL,
+        active TINYINTEGER DEFAULT 1,
+        readOnly TINYINTEGER,
+        blockPrivilege TINYINTEGER,
+        analyticsPrivilege TINYINTEGER,
+        company TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`
+    ]
+    super(caller, { ...opts, runSqlAtStart }, ctx)
 
     this.name = 'auth-google'
     this._hasConf = true
@@ -18,6 +37,15 @@ class GoogleAuth extends Base {
 
     if (opts.conf) this.conf = opts.conf
     this.checkAdmAccessLevel = this.checkAdmAccessLevel.bind(this)
+  }
+
+  _start (cb) {
+    async.series([
+      super._start.bind(this),
+      async () => {
+        await this._saveAdminsFromConfig()
+      }
+    ], cb)
   }
 
   loginAdmin (args, cb) {
@@ -33,10 +61,10 @@ class GoogleAuth extends Base {
       : this._loginAdminGoogle(google, ip, cb)
   }
 
-  _loginAdminPass (params, ip, cb) {
+  async _loginAdminPass (params, ip, cb) {
     const {
       valid, level, extra
-    } = this.basicAuthAdmLogCheck(params.username, params.password)
+    } = await this.basicAuthAdmLogCheck(params.username, params.password)
 
     return (valid)
       ? this._createAdminToken(params.username, ip, level, extra, cb)
@@ -46,7 +74,7 @@ class GoogleAuth extends Base {
   async _loginAdminGoogle (params, ip, cb) {
     try {
       const email = await this.googleEmailFromToken(params)
-      const { valid, level, extra } = this._validAdminUserGoogleEmail(email)
+      const { valid, level, extra } = await this._validAdminUserGoogleEmail(email)
       return (valid)
         ? this._createAdminToken(email, ip, level, extra, cb)
         : cb(new Error('AUTH_FAC_ONLY_BITFINEX_ACCOUNTS_ARE_ALLOW'))
@@ -99,7 +127,7 @@ class GoogleAuth extends Base {
     }
   }
 
-  _validAdminUserGoogleEmail (mail) {
+  async _validAdminUserGoogleEmail (mail) {
     return this._whiteListEmail(mail)
   }
 
@@ -142,8 +170,8 @@ class GoogleAuth extends Base {
     })
   }
 
-  _whiteListEmail (sentEmail) {
-    const admin = this._getAdmin(sentEmail)
+  async _whiteListEmail (sentEmail) {
+    const admin = await this._getAdmin(sentEmail)
 
     if (!admin) return { valid: false }
 
@@ -156,13 +184,109 @@ class GoogleAuth extends Base {
     }
   }
 
-  basicAuthAdmLogCheck (sentEmail, sentPassword) {
-    const admin = this._getAdmin(sentEmail)
+  async _saveAdminsFromConfig () {
+    const admins = this.conf.ADM_USERS
+
+    const tasks = admins.map(async (admin) => {
+      const { email } = admin
+      const adm = await this._getAdmin(email)
+      if (adm) return adm
+
+      return this.addAdmin(admin)
+    })
+
+    await Promise.all(tasks)
+  }
+
+  async addAdmin (user) {
+    const {
+      email,
+      password,
+      level,
+      readOnly,
+      blockPrivilege,
+      analyticsPrivilege,
+      company
+    } = user
+
+    assert.ok(typeof email === 'string', 'Email is required')
+    assert.ok(typeof level === 'number', 'Level must be a number')
+
+    if (password) {
+      assert.ok(typeof password === 'string', 'Password should be a string')
+    }
+
+    if (readOnly) {
+      assert.ok(typeof readOnly === 'boolean', 'readOnly should be a boolean')
+    }
+
+    if (blockPrivilege) {
+      assert.ok(typeof blockPrivilege === 'boolean', 'blockPrivilege should be a boolean')
+    }
+
+    if (analyticsPrivilege) {
+      assert.ok(typeof analyticsPrivilege === 'boolean', 'analyticsPrivilege should be a boolean')
+    }
+
+    if (company) {
+      assert.ok(typeof company === 'string', 'company should be a string')
+    }
+
+    const adm = await this._getAdmin(email, false)
+    if (adm) throw new Error('ADMIN_ACCOUNT_EXISTS')
+
+    const salt = await bcrypt.genSalt()
+    const hashedPassword = password
+      ? await bcrypt.hash(password, salt)
+      : null
+
+    user.password = hashedPassword
+
+    return new Promise((resolve, reject) => {
+      const keys = Object.keys(user)
+
+      this.db.run(
+        `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${Array(keys.length).fill('?').join(', ')})`,
+        keys.map(key => user[key]),
+        function (err) {
+          if (err) return reject(err)
+
+          resolve({
+            email,
+            level,
+            readOnly,
+            blockPrivilege,
+            analyticsPrivilege,
+            company,
+            active: true,
+            id: this.lastID
+          })
+        }
+      )
+    })
+  }
+
+  async removeAdmin (id) {
+    return new Promise((resolve, reject) => {
+      this.db.serialize(() => {
+        const statement = this.db.prepare(`DELETE FROM ${tableName} WHERE id=?`)
+        statement.run(id)
+        statement.finalize(err => {
+          if (err) return reject(err)
+
+          resolve(id)
+        })
+      })
+    })
+  }
+
+  async basicAuthAdmLogCheck (sentEmail, sentPassword) {
+    const admin = await this._getAdmin(sentEmail)
 
     if (!(
       admin &&
       admin.password && // password cant be empty or false
-      admin.password === sentPassword
+      (await bcrypt.compare(sentPassword, admin.password))
     )) {
       return { valid: false }
     }
@@ -176,43 +300,46 @@ class GoogleAuth extends Base {
     }
   }
 
-  checkAdmAccessLevel (adminEmail, level) {
-    const admin = this._getAdmin(adminEmail)
+  async checkAdmAccessLevel (adminEmail, level) {
+    const admin = await this._getAdmin(adminEmail)
     const valid = !!admin && admin.level <= level
     return valid
   }
 
-  checkAdmIsReadOnly (adminEmail) {
-    const admin = this._getAdmin(adminEmail)
+  async checkAdmIsReadOnly (adminEmail) {
+    const admin = await this._getAdmin(adminEmail)
     if (!admin) throw new Error('Searched admin was not found')
 
     return !!admin.readOnly
   }
 
-  checkAdmHasBlockPrivilege (adminEmail) {
-    const admin = this._getAdmin(adminEmail)
+  async checkAdmHasBlockPrivilege (adminEmail) {
+    const admin = await this._getAdmin(adminEmail)
     if (!admin) throw new Error('Searched admin was not found')
 
     return !!(admin.level === 0 || admin.blockPrivilege)
   }
 
-  checkAdmHasAnalyticsPrivilege (adminEmail) {
-    const admin = this._getAdmin(adminEmail)
+  async checkAdmHasAnalyticsPrivilege (adminEmail) {
+    const admin = await this._getAdmin(adminEmail)
     if (!admin) throw new Error('Searched admin was not found')
 
     return !!(admin.level === 0 || admin.analyticsPrivilege)
   }
 
-  _getAdmin (email) {
+  async _getAdmin (email, active = true) {
     if (!email) return false
 
-    const admins = this.conf.ADM_USERS
+    return new Promise((resolve, reject) => {
+      const query = active
+        ? `SELECT * FROM ${tableName} WHERE email = ? AND active = 1`
+        : `SELECT * FROM ${tableName} WHERE email = ?`
 
-    for (const adm of admins) {
-      if (adm.email === email) return adm
-    }
-
-    return false
+      this.db.get(query, [email], (err, row) => {
+        if (err) return reject(err)
+        resolve(row)
+      })
+    })
   }
 }
 

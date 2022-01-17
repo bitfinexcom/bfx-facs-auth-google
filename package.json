@@ -13,7 +13,9 @@
   ],
   "dependencies": {
     "async": "^2.6.0",
+    "bcrypt": "^5.0.1",
     "bfx-facs-base": "git+https://github.com/bitfinexcom/bfx-facs-base.git",
+    "bfx-facs-db-sqlite": "git+https://github.com/bitfinexcom/bfx-facs-db-sqlite.git",
     "googleapis": "^68.0.0",
     "uuid": "^3.2.1"
   },
