@@ -10,8 +10,9 @@ const { google } = require('googleapis')
 const tableName = 'admin_users'
 
 class GoogleAuth extends DbBase {
-  constructor (caller, opts, ctx) {
-    const runSqlAtStart = [
+  constructor (caller, opts = {}, ctx) {
+    opts.name = 'auth-google'
+    opts.runSqlAtStart = [
       `CREATE TABLE IF NOT EXISTS ${tableName} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT UNIQUE NOT NULL,
@@ -25,7 +26,7 @@ class GoogleAuth extends DbBase {
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
       )`
     ]
-    super(caller, { ...opts, runSqlAtStart }, ctx)
+    super(caller, opts, ctx)
 
     this.name = 'auth-google'
     this._hasConf = true
@@ -40,12 +41,24 @@ class GoogleAuth extends DbBase {
   }
 
   _start (cb) {
+    if (!this.conf.useDB) {
+      return cb()
+    }
+
     async.series([
       super._start.bind(this),
       async () => {
         await this._saveAdminsFromConfig()
       }
     ], cb)
+  }
+
+  _stop (cb) {
+    if (!this.conf.useDB) {
+      return cb()
+    }
+
+    super._stop(cb)
   }
 
   loginAdmin (args, cb) {
@@ -199,6 +212,8 @@ class GoogleAuth extends DbBase {
   }
 
   async addAdmin (user) {
+    assert.ok(this.conf.useDB, 'Cannot add admins if DB is not available')
+
     const {
       email,
       password,
@@ -267,6 +282,8 @@ class GoogleAuth extends DbBase {
   }
 
   async removeAdmin (id) {
+    assert.ok(this.conf.useDB, 'Cannot remove admins if DB is not available')
+
     return new Promise((resolve, reject) => {
       this.db.serialize(() => {
         const statement = this.db.prepare(`DELETE FROM ${tableName} WHERE id=?`)
@@ -283,10 +300,14 @@ class GoogleAuth extends DbBase {
   async basicAuthAdmLogCheck (sentEmail, sentPassword) {
     const admin = await this._getAdmin(sentEmail)
 
+    const isValidPassword = this.conf.useDB
+      ? (await bcrypt.compare(sentPassword, admin.password))
+      : admin.password === sentPassword
+
     if (!(
       admin &&
       admin.password && // password cant be empty or false
-      (await bcrypt.compare(sentPassword, admin.password))
+      isValidPassword
     )) {
       return { valid: false }
     }
@@ -330,6 +351,12 @@ class GoogleAuth extends DbBase {
   async _getAdmin (email, active = true) {
     if (!email) return false
 
+    return this.conf.useDB
+      ? this._getAdminFromDB(email, active)
+      : this._getAdminFromConfig(email)
+  }
+
+  async _getAdminFromDB (email, active) {
     return new Promise((resolve, reject) => {
       const query = active
         ? `SELECT * FROM ${tableName} WHERE email = ? AND active = 1`
@@ -340,6 +367,16 @@ class GoogleAuth extends DbBase {
         resolve(row)
       })
     })
+  }
+
+  _getAdminFromConfig (email) {
+    const admins = this.conf.ADM_USERS
+
+    for (const adm of admins) {
+      if (adm.email === email) return adm
+    }
+
+    return false
   }
 }
 
