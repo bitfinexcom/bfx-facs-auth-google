@@ -2,10 +2,31 @@
 
 const assert = require('assert')
 const async = require('async')
-const bcrypt = require('bcrypt')
+const crypto = require('crypto')
 const DbBase = require('bfx-facs-db-sqlite')
 const uuidv4 = require('uuid/v4')
 const { google } = require('googleapis')
+
+async function hash (password, salt = '') {
+  return new Promise((resolve, reject) => {
+    const computedSalt = salt || crypto.randomBytes(8).toString('hex')
+
+    crypto.scrypt(password, computedSalt, 64, (err, derivedKey) => {
+      if (err) reject(err)
+      resolve(computedSalt + ':' + derivedKey.toString('hex'))
+    })
+  })
+}
+
+async function verify (password, hash) {
+  return new Promise((resolve, reject) => {
+    const [salt, key] = hash.split(':')
+    crypto.scrypt(password, salt, 64, (err, derivedKey) => {
+      if (err) reject(err)
+      resolve(key === derivedKey.toString('hex'))
+    })
+  })
+}
 
 const tableName = 'admin_users'
 
@@ -250,9 +271,8 @@ class GoogleAuth extends DbBase {
     const adm = await this._getAdmin(email, false)
     if (adm) throw new Error('ADMIN_ACCOUNT_EXISTS')
 
-    const salt = await bcrypt.genSalt()
     const hashedPassword = password
-      ? await bcrypt.hash(password, salt)
+      ? await hash(password, this.conf.hashSalt)
       : null
 
     user.password = hashedPassword
@@ -301,8 +321,8 @@ class GoogleAuth extends DbBase {
     const admin = await this._getAdmin(sentEmail)
 
     const isValidPassword = this.conf.useDB
-      ? (await bcrypt.compare(sentPassword, admin.password))
-      : admin.password === sentPassword
+      ? (await verify(sentPassword, (admin?.password || '')))
+      : admin?.password === sentPassword
 
     if (!(
       admin &&
