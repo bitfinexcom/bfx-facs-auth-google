@@ -16,6 +16,7 @@
     "bfx-facs-base": "git+https://github.com/bitfinexcom/bfx-facs-base.git",
     "bfx-facs-db-sqlite": "git+https://github.com/bitfinexcom/bfx-facs-db-sqlite.git",
     "googleapis": "^68.0.0",
+    "lodash": "^4.17.21",
     "uuid": "^3.2.1"
   },
   "engine": {

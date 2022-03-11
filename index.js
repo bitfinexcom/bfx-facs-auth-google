@@ -3,6 +3,7 @@
 const path = require('path')
 const fs = require('fs').promises
 const assert = require('assert')
+const _ = require('lodash')
 const async = require('async')
 const crypto = require('crypto')
 const DbBase = require('bfx-facs-db-sqlite')
@@ -47,7 +48,8 @@ class GoogleAuth extends DbBase {
         analyticsPrivilege TINYINTEGER,
         company TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`
+      )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS uidx_email ON ${tableName}(email ASC)`
     ]
     super(caller, opts, ctx)
 
@@ -336,7 +338,7 @@ class GoogleAuth extends DbBase {
     const admin = await this._getAdmin(sentEmail)
 
     const isValidPassword = this.conf.useDB
-      ? (await verify(sentPassword, (admin?.password || '')))
+      ? sentPassword && admin?.password && (await verify(sentPassword, admin.password))
       : admin?.password === sentPassword
 
     if (!(
@@ -383,6 +385,14 @@ class GoogleAuth extends DbBase {
     return !!(admin.level === 0 || admin.analyticsPrivilege)
   }
 
+  async getAdmin (email) {
+    const admin = await this._getAdmin(email)
+    const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
+      'analyticsPrivilege', 'readOnly', 'active', 'timestamp']
+
+    return _.pick(admin, displayKeys)
+  }
+
   async _getAdmin (email, active = true) {
     if (!email) return false
 
@@ -394,10 +404,10 @@ class GoogleAuth extends DbBase {
   async _getAdminFromDB (email, active) {
     return new Promise((resolve, reject) => {
       const query = active
-        ? `SELECT * FROM ${tableName} WHERE email = ? AND active = 1`
-        : `SELECT * FROM ${tableName} WHERE email = ?`
+        ? `SELECT * FROM ${tableName} WHERE LOWER(email) = ? AND active = 1`
+        : `SELECT * FROM ${tableName} WHERE LOWER(email) = ?`
 
-      this.db.get(query, [email], (err, row) => {
+      this.db.get(query, [email.toLowerCase()], (err, row) => {
         if (err) return reject(err)
         resolve(row)
       })
@@ -408,10 +418,33 @@ class GoogleAuth extends DbBase {
     const admins = this.conf.ADM_USERS
 
     for (const adm of admins) {
-      if (adm.email === email) return adm
+      if (adm.email.toLowerCase() === email.toLowerCase()) return adm
     }
 
     return false
+  }
+
+  async getAdminEmails () {
+    return this.conf.useDB
+      ? this._getAdminEmailsFromDB()
+      : this._getAdminEmailsFromConfig()
+  }
+
+  async _getAdminEmailsFromDB () {
+    return new Promise((resolve, reject) => {
+      const query = `SELECT LOWER(email) AS email FROM ${tableName} WHERE active = 1 ORDER BY email ASC`
+
+      this.db.all(query, [], (err, rows) => {
+        if (err) return reject(err)
+        resolve((rows || []).map(row => row.email))
+      })
+    })
+  }
+
+  async _getAdminEmailsFromConfig () {
+    return this.conf.ADM_USERS.map(
+      u => u.email.toLowerCase()
+    )
   }
 }
 
