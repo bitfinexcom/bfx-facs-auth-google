@@ -370,7 +370,9 @@ class GoogleAuth extends DbBase {
 
   async getAdmin (email) {
     const admin = await this._getAdmin(email)
-    delete admin?.password
+    if (this.conf.useDB) {
+      delete admin?.password
+    }
     return admin
   }
 
@@ -399,7 +401,7 @@ class GoogleAuth extends DbBase {
     const admins = this.conf.ADM_USERS
 
     for (const adm of admins) {
-      if (adm.email === email) return adm
+      if (adm.email.toLowerCase() === email.toLowerCase()) return adm
     }
 
     return false
@@ -413,7 +415,7 @@ class GoogleAuth extends DbBase {
 
   async _getAdminEmailsFromDB () {
     return new Promise((resolve, reject) => {
-      const query = `SELECT LOWER(email) AS email FROM ${tableName} WHERE active = 1`
+      const query = `SELECT LOWER(email) AS email FROM ${tableName} WHERE active = 1 ORDER BY email ASC`
 
       this.db.all(query, [], (err, rows) => {
         if (err) return reject(err)
