@@ -1,5 +1,7 @@
 'use strict'
 
+const path = require('path')
+const fs = require('fs').promises
 const assert = require('assert')
 const async = require('async')
 const crypto = require('crypto')
@@ -67,6 +69,19 @@ class GoogleAuth extends DbBase {
     }
 
     async.series([
+      async () => {
+        if (this.conf.useDB) {
+          const db = this.opts.db
+          const dbDir = path.dirname(db)
+          try {
+            await fs.access(dbDir)
+          } catch (err) {
+            if (err && err.code === 'ENOENT') {
+              await fs.mkdir(dbDir)
+            }
+          }
+        }
+      },
       super._start.bind(this),
       async () => {
         await this._saveAdminsFromConfig()
