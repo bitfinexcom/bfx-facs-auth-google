@@ -321,7 +321,7 @@ class GoogleAuth extends DbBase {
     const admin = await this._getAdmin(sentEmail)
 
     const isValidPassword = this.conf.useDB
-      ? (await verify(sentPassword, (admin?.password || '')))
+      ? (await verify((sentPassword || ''), (admin?.password || '')))
       : admin?.password === sentPassword
 
     if (!(
@@ -370,7 +370,7 @@ class GoogleAuth extends DbBase {
 
   async getAdmin (email) {
     const admin = await this._getAdmin(email)
-    delete admin.password
+    delete admin?.password
     return admin
   }
 
@@ -385,10 +385,10 @@ class GoogleAuth extends DbBase {
   async _getAdminFromDB (email, active) {
     return new Promise((resolve, reject) => {
       const query = active
-        ? `SELECT * FROM ${tableName} WHERE email = ? AND active = 1`
-        : `SELECT * FROM ${tableName} WHERE email = ?`
+        ? `SELECT * FROM ${tableName} WHERE LOWER(email) = ? AND active = 1`
+        : `SELECT * FROM ${tableName} WHERE LOWER(email) = ?`
 
-      this.db.get(query, [email], (err, row) => {
+      this.db.get(query, [email.toLowerCase()], (err, row) => {
         if (err) return reject(err)
         resolve(row)
       })
@@ -403,6 +403,29 @@ class GoogleAuth extends DbBase {
     }
 
     return false
+  }
+
+  async getAdminEmails () {
+    return this.conf.useDB
+      ? this._getAdminEmailsFromDB()
+      : this._getAdminEmailsFromConfig()
+  }
+
+  async _getAdminEmailsFromDB () {
+    return new Promise((resolve, reject) => {
+      const query = `SELECT LOWER(email) AS email FROM ${tableName} WHERE active = 1`
+
+      this.db.all(query, [], (err, rows) => {
+        if (err) return reject(err)
+        resolve((rows || []).map(row => row.email))
+      })
+    })
+  }
+
+  async _getAdminEmailsFromConfig () {
+    return this.conf.ADM_USERS.map(
+      u => u.email.toLowerCase()
+    )
   }
 }
 
