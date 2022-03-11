@@ -1,6 +1,7 @@
 'use strict'
 
 const assert = require('assert')
+const _ = require('lodash')
 const async = require('async')
 const crypto = require('crypto')
 const DbBase = require('bfx-facs-db-sqlite')
@@ -45,7 +46,8 @@ class GoogleAuth extends DbBase {
         analyticsPrivilege TINYINTEGER,
         company TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`
+      )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS uidx_email ON ${tableName}(email ASC)`
     ]
     super(caller, opts, ctx)
 
@@ -321,7 +323,7 @@ class GoogleAuth extends DbBase {
     const admin = await this._getAdmin(sentEmail)
 
     const isValidPassword = this.conf.useDB
-      ? (await verify((sentPassword || ''), (admin?.password || '')))
+      ? sentPassword && admin?.password && (await verify(sentPassword, admin.password))
       : admin?.password === sentPassword
 
     if (!(
@@ -370,10 +372,10 @@ class GoogleAuth extends DbBase {
 
   async getAdmin (email) {
     const admin = await this._getAdmin(email)
-    if (this.conf.useDB) {
-      delete admin?.password
-    }
-    return admin
+    const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
+      'analyticsPrivilege', 'readOnly', 'active', 'timestamp']
+
+    return _.pick(admin, displayKeys)
   }
 
   async _getAdmin (email, active = true) {
