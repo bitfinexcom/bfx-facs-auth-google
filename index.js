@@ -368,6 +368,12 @@ class GoogleAuth extends DbBase {
     return !!(admin.level === 0 || admin.analyticsPrivilege)
   }
 
+  async getAdmin (email) {
+    const admin = await this._getAdmin(email)
+    delete admin.password
+    return admin
+  }
+
   async _getAdmin (email, active = true) {
     if (!email) return false
 
