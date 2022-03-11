@@ -237,6 +237,7 @@ class GoogleAuth extends DbBase {
 
   async _saveAdminsFromConfig () {
     const admins = this.conf.ADM_USERS
+    if (!(admins && Array.isArray(admins))) return true
 
     const tasks = admins.map(async (admin) => {
       const { email } = admin
@@ -415,7 +416,7 @@ class GoogleAuth extends DbBase {
   }
 
   _getAdminFromConfig (email) {
-    const admins = this.conf.ADM_USERS
+    const admins = this.conf.ADM_USERS || []
 
     for (const adm of admins) {
       if (adm.email.toLowerCase() === email.toLowerCase()) return adm
@@ -442,7 +443,8 @@ class GoogleAuth extends DbBase {
   }
 
   async _getAdminEmailsFromConfig () {
-    return this.conf.ADM_USERS.map(
+    const admins = this.conf.ADM_USERS || []
+    return admins.map(
       u => u.email.toLowerCase()
     )
   }
