@@ -391,7 +391,9 @@ class GoogleAuth extends DbBase {
     const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
       'analyticsPrivilege', 'readOnly', 'active', 'timestamp']
 
-    return _.pick(admin, displayKeys)
+    return admin
+      ? _.pick(admin, displayKeys)
+      : admin
   }
 
   async _getAdmin (email, active = true) {
