@@ -49,5 +49,9 @@
     "lint": "standard",
     "lintFix": "standard --fix index.js",
     "startSimulatedEnviroment": "node test/simulate/simulate-enviroment.js"
+  },
+  "devDependencies": {
+    "mocha": "^10.2.0",
+    "standard": "^17.1.0"
   }
 }
