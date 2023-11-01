@@ -6,8 +6,6 @@ const assert = require('assert')
 
 const AuthGoogle = require('../')
 
-const ctx = {root: './test'}
-const caller = {ctx: ctx}
+const ctx = { root: './test' }
+const caller = { ctx: ctx }
 const authGoogle = new AuthGoogle(caller, {}, ctx)
-
-
