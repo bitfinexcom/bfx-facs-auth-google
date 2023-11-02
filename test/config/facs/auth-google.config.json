@@ -44,5 +44,6 @@
       "password": false,
       "level": 0
     }
-  ]
+  ],
+  "useDB": true
 }
