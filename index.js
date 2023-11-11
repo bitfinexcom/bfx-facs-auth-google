@@ -433,7 +433,7 @@ class GoogleAuth extends DbBase {
     const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
       'analyticsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD]
 
-    if (this.conf.useDB && admin[FORMS_FIELD]) {
+    if (this.conf.useDB && admin && admin[FORMS_FIELD]) {
       admin[FORMS_FIELD] = JSON.parse(admin[FORMS_FIELD])
     }
 
