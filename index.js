@@ -10,6 +10,8 @@ const DbBase = require('bfx-facs-db-sqlite')
 const uuidv4 = require('uuid/v4')
 const { google } = require('googleapis')
 
+const FORMS_FIELD = 'forms'
+
 async function hash (password, salt = '') {
   return new Promise((resolve, reject) => {
     const computedSalt = salt || crypto.randomBytes(8).toString('hex')
@@ -32,7 +34,33 @@ async function verify (password, hash) {
 }
 
 const tableName = 'admin_users'
-
+/**
+ * @typedef {{
+ *  email: string,
+ *  level: number,
+ *  readOnly?: boolean,
+ *  blockPrivilege?: boolean,
+ *  analyticsPrivilege?: boolean,
+ *  company?: string,
+ *  forms?: string[]
+ * }} BaseAdminT
+ * @typedef { BaseAdminT & { password: string }} AddAdminT
+ * @typedef { BaseAdminT & {
+ *  active: boolean,
+ *  id: number
+ * }} AddedAdminT
+ * @typedef {{ username: string, password: string }} LoginUserT
+ * @typedef {{
+ *  access_token: string | null;
+ *  token_type: string | null;
+ *  expiry_date: string | null;
+ * }} Credentials
+ * @typedef { AddedAdminT & {
+ *  username: string,
+ *  token: string,
+ *  expires_at: Date
+ * }} LoginResp
+ */
 class GoogleAuth extends DbBase {
   constructor (caller, opts = {}, ctx) {
     opts.name = 'auth-google'
@@ -48,7 +76,8 @@ class GoogleAuth extends DbBase {
         analyticsPrivilege TINYINTEGER,
         manageAdminsPrivilege TINYINTEGER,
         company TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        ${FORMS_FIELD} TEXT
       )`,
       `CREATE UNIQUE INDEX IF NOT EXISTS uidx_email ON ${tableName}(email ASC)`
     ]
@@ -100,6 +129,11 @@ class GoogleAuth extends DbBase {
     super._stop(cb)
   }
 
+  /**
+   * @param {{ user: LoginUserT, google: Credentials, ip: number }} args
+   * @param { (err: null|Error, res: LoginResp) => void } cb
+   * @returns { void }
+   */
   loginAdmin (args, cb) {
     const { user, google, ip } = args
 
@@ -251,6 +285,10 @@ class GoogleAuth extends DbBase {
     await Promise.all(tasks)
   }
 
+  /**
+   * @param { AddAdminT } user
+   * @returns { Promise<AddedAdminT> }
+   */
   async addAdmin (user) {
     assert.ok(this.conf.useDB, 'Cannot add admins if DB is not available')
 
@@ -301,7 +339,7 @@ class GoogleAuth extends DbBase {
 
       this.db.run(
         `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${Array(keys.length).fill('?').join(', ')})`,
-        keys.map(key => user[key]),
+        keys.map(key => key === FORMS_FIELD ? JSON.stringify(user[key]) : user[key]),
         function (err) {
           if (err) return reject(err)
 
@@ -394,10 +432,18 @@ class GoogleAuth extends DbBase {
     return !!(admin.level === 0 && admin.manageAdminsPrivilege)
   }
 
+  /**
+   * @param { string } email
+   * @returns { BaseAdminT & { timestamp: Date, active: boolean } }
+   */
   async getAdmin (email) {
     const admin = await this._getAdmin(email)
     const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
-      'analyticsPrivilege', 'readOnly', 'active', 'timestamp']
+      'analyticsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD]
+
+    if (this.conf.useDB && admin && admin[FORMS_FIELD]) {
+      admin[FORMS_FIELD] = JSON.parse(admin[FORMS_FIELD])
+    }
 
     return admin
       ? _.pick(admin, displayKeys)
