@@ -74,6 +74,7 @@ class GoogleAuth extends DbBase {
         readOnly TINYINTEGER,
         blockPrivilege TINYINTEGER,
         analyticsPrivilege TINYINTEGER,
+        manageAdminsPrivilege TINYINTEGER,
         company TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
         ${FORMS_FIELD} TEXT
@@ -422,6 +423,13 @@ class GoogleAuth extends DbBase {
     if (!admin) throw new Error('Searched admin was not found')
 
     return !!(admin.level === 0 || admin.analyticsPrivilege)
+  }
+
+  async checkAdmHasManageAdminsPrivilege (adminEmail) {
+    const admin = await this._getAdmin(adminEmail)
+    if (!admin) throw new Error('Searched admin was not found')
+
+    return !!(admin.level === 0 && admin.manageAdminsPrivilege)
   }
 
   /**
