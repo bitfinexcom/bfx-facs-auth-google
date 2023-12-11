@@ -469,8 +469,8 @@ class GoogleAuth extends DbBase {
 
     return new Promise((resolve, reject) => {
       this.db.serialize(() => {
-        const statement = this.db.prepare(`DELETE FROM ${tableName} WHERE id=? OR email=?`)
-        statement.run([idOrEmail, idOrEmail])
+        const statement = this.db.prepare(`DELETE FROM ${tableName} WHERE id = ? OR LOWER(email) = ?`)
+        statement.run([idOrEmail, `${idOrEmail}`.toLowerCase()])
         statement.finalize(err => {
           if (err) return reject(err)
 
