@@ -1,6 +1,6 @@
 {
   "name": "bfx-facs-auth-google",
-  "version": "1.0.3",
+  "version": "1.1.3",
   "private": false,
   "description": "Bitfinex Google Oauth Facility",
   "author": {
@@ -49,5 +49,9 @@
     "lint": "standard",
     "lintFix": "standard --fix index.js",
     "startSimulatedEnviroment": "node test/simulate/simulate-enviroment.js"
+  },
+  "devDependencies": {
+    "mocha": "^10.2.0",
+    "standard": "^17.1.0"
   }
 }
