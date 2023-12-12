@@ -9,6 +9,8 @@ const crypto = require('crypto')
 const DbBase = require('bfx-facs-db-sqlite')
 const uuidv4 = require('uuid/v4')
 const { google } = require('googleapis')
+const { UserError } = require('./errors')
+const migrations = require('./migrations')
 
 const FORMS_FIELD = 'forms'
 
@@ -41,6 +43,7 @@ const tableName = 'admin_users'
  *  readOnly?: boolean,
  *  blockPrivilege?: boolean,
  *  analyticsPrivilege?: boolean,
+ *  manageAdminsPrivilege?: boolean,
  *  company?: string,
  *  forms?: string[]
  * }} BaseAdminT
@@ -115,6 +118,9 @@ class GoogleAuth extends DbBase {
         }
       },
       super._start.bind(this),
+      cb => {
+        this.runMigrations(migrations, cb)
+      },
       async () => {
         await this._saveAdminsFromConfig()
       }
@@ -299,6 +305,7 @@ class GoogleAuth extends DbBase {
       readOnly,
       blockPrivilege,
       analyticsPrivilege,
+      manageAdminsPrivilege,
       company
     } = user
 
@@ -319,6 +326,10 @@ class GoogleAuth extends DbBase {
 
     if (analyticsPrivilege) {
       assert.ok(typeof analyticsPrivilege === 'boolean', 'analyticsPrivilege should be a boolean')
+    }
+
+    if (manageAdminsPrivilege) {
+      assert.ok(typeof manageAdminsPrivilege === 'boolean', 'manageAdminsPrivilege should be a boolean')
     }
 
     if (company) {
@@ -349,6 +360,7 @@ class GoogleAuth extends DbBase {
             readOnly,
             blockPrivilege,
             analyticsPrivilege,
+            manageAdminsPrivilege,
             company,
             active: true,
             id: this.lastID
@@ -358,17 +370,116 @@ class GoogleAuth extends DbBase {
     })
   }
 
-  async removeAdmin (id) {
+  async updateAdmin (email, user) {
+    assert.ok(this.conf.useDB, 'Cannot add admins if DB is not available')
+
+    const {
+      password,
+      level,
+      readOnly,
+      blockPrivilege,
+      analyticsPrivilege,
+      manageAdminsPrivilege,
+      company,
+      active
+    } = user
+
+    assert.ok(typeof email === 'string', 'Email is required')
+
+    if (user.email) {
+      throw new UserError('Email cannot be updated')
+    }
+
+    if (password) {
+      throw new UserError('Use Change Password endpoint to update user password')
+    }
+    
+    if (level) {
+      assert.ok(typeof level === 'number', 'Level must be a number')
+    }
+
+    if (readOnly) {
+      assert.ok(typeof readOnly === 'boolean', 'readOnly should be a boolean')
+    }
+
+    if (blockPrivilege) {
+      assert.ok(typeof blockPrivilege === 'boolean', 'blockPrivilege should be a boolean')
+    }
+
+    if (analyticsPrivilege) {
+      assert.ok(typeof analyticsPrivilege === 'boolean', 'analyticsPrivilege should be a boolean')
+    }
+
+    if (manageAdminsPrivilege) {
+      assert.ok(typeof manageAdminsPrivilege === 'boolean', 'manageAdminsPrivilege should be a boolean')
+    }
+
+    if (company) {
+      assert.ok(typeof company === 'string', 'company should be a string')
+    }
+
+    if (active) {
+      assert.ok(typeof active === 'boolean', 'active should be a boolean')
+    }
+
+    const adm = await this._getAdmin(email)
+    if (!adm) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
+
+    return new Promise((resolve, reject) => {
+      const keys = Object.keys(user)
+
+      this.db.run(
+        `UPDATE ${tableName} SET ${keys.join(' = ?, ')} = ? WHERE id = ?`,
+        keys.map(key => user[key]).concat(adm.id),
+        function (err) {
+          if (err) return reject(err)
+
+          resolve(user)
+        }
+      )
+    })
+  }
+
+  async updateAdminPassword (email, newPassword, oldPassword) {
+    assert.ok(this.conf.useDB, 'Cannot add admins if DB is not available')
+
+    assert.ok(typeof email === 'string', 'Email is required')
+    assert.ok(typeof newPassword === 'string', 'New Password is required')
+    assert.ok(typeof oldPassword === 'string', 'Old Password is required')
+
+    const adm = await this._getAdmin(email)
+    if (!adm) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
+
+    if (!(await verify(oldPassword, adm.password))) {
+      throw new UserError('INVALID_PASSWORD')
+    }
+
+    const password = await hash(newPassword, this.conf.hashSalt)
+
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        `UPDATE ${tableName} SET password = ? WHERE id = ?`,
+        [password, adm.id],
+        function (err) {
+          if (err) return reject(err)
+
+          resolve(true)
+        }
+      )
+    })
+  }
+
+  async removeAdmin (idOrEmail) {
     assert.ok(this.conf.useDB, 'Cannot remove admins if DB is not available')
 
     return new Promise((resolve, reject) => {
       this.db.serialize(() => {
-        const statement = this.db.prepare(`DELETE FROM ${tableName} WHERE id=?`)
-        statement.run(id)
+        const statement = this.db.prepare(`DELETE FROM ${tableName} WHERE id = ? OR LOWER(email) = ?`)
+        statement.run([idOrEmail, `${idOrEmail}`.toLowerCase()])
         statement.finalize(err => {
           if (err) return reject(err)
 
-          resolve(id)
+          resolve(idOrEmail)
         })
       })
     })
@@ -439,7 +550,7 @@ class GoogleAuth extends DbBase {
   async getAdmin (email) {
     const admin = await this._getAdmin(email)
     const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
-      'analyticsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD]
+      'analyticsPrivilege', 'manageAdminsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD]
 
     if (this.conf.useDB && admin && admin[FORMS_FIELD]) {
       admin[FORMS_FIELD] = JSON.parse(admin[FORMS_FIELD])
