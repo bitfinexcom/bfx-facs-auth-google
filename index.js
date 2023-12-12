@@ -10,6 +10,7 @@ const DbBase = require('bfx-facs-db-sqlite')
 const uuidv4 = require('uuid/v4')
 const { google } = require('googleapis')
 const { UserError } = require('./errors')
+const migrations = require('./migrations')
 
 const FORMS_FIELD = 'forms'
 
@@ -42,6 +43,7 @@ const tableName = 'admin_users'
  *  readOnly?: boolean,
  *  blockPrivilege?: boolean,
  *  analyticsPrivilege?: boolean,
+ *  manageAdminsPrivilege?: boolean,
  *  company?: string,
  *  forms?: string[]
  * }} BaseAdminT
@@ -116,6 +118,9 @@ class GoogleAuth extends DbBase {
         }
       },
       super._start.bind(this),
+      cb => {
+        this.runMigrations(migrations, cb)
+      },
       async () => {
         await this._saveAdminsFromConfig()
       }
