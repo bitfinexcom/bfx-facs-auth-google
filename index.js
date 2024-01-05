@@ -481,7 +481,7 @@ class GoogleAuth extends DbBase {
     const admin = await this._getAdmin(email)
     if (!admin) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
     if (admin.passwordResetToken !== passwordResetToken) throw new UserError('INVALID_passwordResetToken')
-    let expiryDate = new Date(admin.passwordResetSentAt)
+    const expiryDate = new Date(admin.passwordResetSentAt)
     expiryDate.setDate(expiryDate.getDate() + 1)
     if (Date.now() > expiryDate) throw new UserError('RESET_LINK_EXPIRED')
 
@@ -581,7 +581,7 @@ class GoogleAuth extends DbBase {
   async getAdmin (email) {
     const admin = await this._getAdmin(email)
     const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
-      'analyticsPrivilege', 'manageAdminsPrivilege', 'readOnly', 'active', 'timestamp', 'passwordResetToken', 'passwordResetSentAt', FORMS_FIELD]
+      'analyticsPrivilege', 'manageAdminsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD]
 
     if (this.conf.useDB && admin && admin[FORMS_FIELD]) {
       admin[FORMS_FIELD] = JSON.parse(admin[FORMS_FIELD])

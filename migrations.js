@@ -24,6 +24,28 @@ const migrations = [
         ADD forms TEXT
       `, cb)
     })
+  },
+  (_this, cb) => {
+    _this.db.all(`PRAGMA table_info(${tableName})`, [], (err, rows) => {
+      if (err) return cb(err)
+      if (rows?.find(row => row.name === 'passwordResetSentAt')) return cb()
+
+      _this.db.run(`
+        ALTER TABLE ${tableName}
+        ADD passwordResetSentAt DATETIME
+      `, cb)
+    })
+  },
+  (_this, cb) => {
+    _this.db.all(`PRAGMA table_info(${tableName})`, [], (err, rows) => {
+      if (err) return cb(err)
+      if (rows?.find(row => row.name === 'passwordResetToken')) return cb()
+
+      _this.db.run(`
+        ALTER TABLE ${tableName}
+        ADD passwordResetToken TEXT
+      `, cb)
+    })
   }
 ]
 
