@@ -578,8 +578,8 @@ class GoogleAuth extends DbBase {
    * @param { string } email
    * @returns { BaseAdminT & { timestamp: Date, active: boolean } }
    */
-  async getAdmin (email) {
-    const admin = await this._getAdmin(email)
+  async getAdmin (email, active = true) {
+    const admin = await this._getAdmin(email, active)
     const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
       'analyticsPrivilege', 'manageAdminsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD]
 
@@ -623,15 +623,17 @@ class GoogleAuth extends DbBase {
     return false
   }
 
-  async getAdminEmails () {
+  async getAdminEmails (active = true) {
     return this.conf.useDB
-      ? this._getAdminEmailsFromDB()
+      ? this._getAdminEmailsFromDB(active)
       : this._getAdminEmailsFromConfig()
   }
 
-  async _getAdminEmailsFromDB () {
+  async _getAdminEmailsFromDB (active) {
     return new Promise((resolve, reject) => {
-      const query = `SELECT LOWER(email) AS email FROM ${tableName} WHERE active = 1 ORDER BY email ASC`
+      const query = active
+        ? `SELECT LOWER(email) AS email FROM ${tableName} WHERE active = 1 ORDER BY email ASC`
+        : `SELECT LOWER(email) AS email FROM ${tableName} ORDER BY email ASC`
 
       this.db.all(query, [], (err, rows) => {
         if (err) return reject(err)
