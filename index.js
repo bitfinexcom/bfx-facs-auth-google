@@ -44,6 +44,8 @@ const tableName = 'admin_users'
  *  blockPrivilege?: boolean,
  *  analyticsPrivilege?: boolean,
  *  manageAdminsPrivilege?: boolean,
+ *  passwordResetToken?: string,
+ *  passwordResetSentAt?: Date,
  *  company?: string,
  *  forms?: string[]
  * }} BaseAdminT
@@ -78,6 +80,8 @@ class GoogleAuth extends DbBase {
         blockPrivilege TINYINTEGER,
         analyticsPrivilege TINYINTEGER,
         manageAdminsPrivilege TINYINTEGER,
+        passwordResetToken TEXT,
+        passwordResetSentAt DATETIME,
         company TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
         ${FORMS_FIELD} TEXT
@@ -460,6 +464,33 @@ class GoogleAuth extends DbBase {
       this.db.run(
         `UPDATE ${tableName} SET password = ? WHERE id = ?`,
         [password, adm.id],
+        function (err) {
+          if (err) return reject(err)
+
+          resolve(true)
+        }
+      )
+    })
+  }
+  async resetAdminPassword(email, newPassword, passwordResetToken) {
+    assert.ok(this.conf.useDB, 'Cannot add admins if DB is not available')
+
+    assert.ok(typeof email === 'string', 'Email is required')
+    assert.ok(typeof newPassword === 'string', 'New Password is required')
+
+    const admin = await this._getAdmin(email)
+    if (!admin) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
+    if (admin.passwordResetToken !== passwordResetToken) throw new UserError('INVALID_passwordResetToken')
+    const expiryDate = new Date(admin.passwordResetSentAt)
+    expiryDate.setDate(expiryDate.getDate() + 1)
+    if (Date.now() > expiryDate) throw new UserError('RESET_LINK_EXPIRED')
+
+    const password = await hash(newPassword, this.conf.hashSalt)
+
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        `UPDATE ${tableName} SET password = ? WHERE id = ?`,
+        [password, admin.id],
         function (err) {
           if (err) return reject(err)
 
