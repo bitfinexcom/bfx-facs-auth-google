@@ -149,7 +149,8 @@ class GoogleAuth extends DbBase {
 
     const complete = (user)
       ? ['username', 'password'].every(k => k in user)
-      : ['access_token', 'token_type', 'expiry_date'].every(k => k in google)
+      : ['access_token', 'token_type', 'expiry_date'].every(k => k in google) ||
+        ['credential'].every(k => k in google)
     if (!complete) return cb(new Error('AUTH_FAC_LOGIN_KEYS_MISSING'))
 
     return (user)
@@ -254,6 +255,14 @@ class GoogleAuth extends DbBase {
 
   async googleEmailFromToken (token) {
     const oAuth2Client = await this._getOAuth2Client()
+    if (token?.credential) {
+      const ticket = await oAuth2Client.verifyIdToken({
+        idToken: token.credential
+      })
+
+      const payload = ticket.getPayload()
+      return payload.email
+    }
     oAuth2Client.setCredentials(token)
     const oauth2 = google.oauth2({ version: 'v2', auth: oAuth2Client })
 
