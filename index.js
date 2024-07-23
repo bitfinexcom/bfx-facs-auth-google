@@ -147,6 +147,10 @@ class GoogleAuth extends DbBase {
   loginAdmin (args, cb) {
     const { user, google, ip } = args
 
+    if (!user || !google) {
+      return cb(new Error('AUTH_FAC_LOGIN_KEYS_MISSING'))
+    }
+
     const complete = (user)
       ? ['username', 'password'].every(k => k in user)
       : ['access_token', 'token_type', 'expiry_date'].every(k => k in google) ||
