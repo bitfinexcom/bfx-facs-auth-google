@@ -147,7 +147,7 @@ class GoogleAuth extends DbBase {
   loginAdmin (args, cb) {
     const { user, google, ip } = args
 
-    if (!user || !google) {
+    if (!user && !google) {
       return cb(new Error('AUTH_FAC_LOGIN_KEYS_MISSING'))
     }
 
