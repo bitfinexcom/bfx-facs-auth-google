@@ -354,7 +354,7 @@ class GoogleAuth extends DbBase {
     }
 
     const adm = await this._getAdmin(email, false)
-    if (adm) throw new Error('ADMIN_ACCOUNT_EXISTS')
+    if (adm) throw new UserError('ADMIN_ACCOUNT_EXISTS')
 
     const hashedPassword = password
       ? await hash(password, this.conf.hashSalt)
@@ -439,7 +439,7 @@ class GoogleAuth extends DbBase {
       assert.ok(typeof active === 'boolean', 'active should be a boolean')
     }
 
-    const adm = await this._getAdmin(email)
+    const adm = await this._getAdmin(email, !active)
     if (!adm) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
 
     return new Promise((resolve, reject) => {
