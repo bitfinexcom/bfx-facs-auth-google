@@ -299,7 +299,7 @@ class GoogleAuth extends DbBase {
 
     const tasks = admins.map(async (admin) => {
       const { email } = admin
-      const adm = await this._getAdmin(email)
+      const adm = await this._getAdmin(email, false)
       if (adm) return adm
 
       return this.addAdmin(admin)
