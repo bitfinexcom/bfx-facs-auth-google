@@ -636,16 +636,26 @@ class GoogleAuth extends DbBase {
     return false
   }
 
-  async getAdminEmails (active = true) {
+  async getAdminEmails (active = true, company) {
     return this.conf.useDB
-      ? this._getAdminEmailsFromDB(active)
-      : this._getAdminEmailsFromConfig()
+      ? this._getAdminEmailsFromDB(active, company)
+      : this._getAdminEmailsFromConfig(company)
   }
 
-  async _getAdminEmailsFromDB (active) {
+  async _getAdminEmailsFromDB (active, company) {
     return new Promise((resolve, reject) => {
-      const query = active
-        ? `SELECT LOWER(email) AS email FROM ${tableName} WHERE active = 1 ORDER BY email ASC`
+      const whereClause = [['active', active && 1], ['company', `'${company}'`]].reduce((query, prop) => {
+        if (prop[1]) {
+          if (query.length) {
+            query += ' AND '
+          }
+          query += `${prop[0]} = ${prop[1]}`
+        }
+        return query
+      }, '')
+
+      const query = active || company
+        ? `SELECT LOWER(email) AS email FROM ${tableName} WHERE ${whereClause} ORDER BY email ASC`
         : `SELECT LOWER(email) AS email FROM ${tableName} ORDER BY email ASC`
 
       this.db.all(query, [], (err, rows) => {
@@ -655,11 +665,16 @@ class GoogleAuth extends DbBase {
     })
   }
 
-  async _getAdminEmailsFromConfig () {
+  async _getAdminEmailsFromConfig (company) {
     const admins = this.conf.ADM_USERS || []
-    return admins.map(
-      u => u.email.toLowerCase()
-    )
+    return admins
+      .filter(u => company
+        ? u.company.toLowerCase() === company.toLowerCase()
+        : true
+      )
+      .map(
+        u => u.email.toLowerCase()
+      )
   }
 }
 
