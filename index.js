@@ -644,7 +644,7 @@ class GoogleAuth extends DbBase {
 
   async _getAdminEmailsFromDB (active, company) {
     return new Promise((resolve, reject) => {
-      const whereClause = [['active', active && 1], ['company', `'${company}'`]].reduce((query, prop) => {
+      const whereClause = [['active', active && 1], ['company', company && `'${company}'`]].reduce((query, prop) => {
         if (prop[1]) {
           if (query.length) {
             query += ' AND '
