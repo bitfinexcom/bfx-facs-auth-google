@@ -180,6 +180,7 @@ class GoogleAuth extends DbBase {
         ? this._createAdminToken(email, ip, level, extra, cb)
         : cb(new Error('AUTH_FAC_ONLY_BITFINEX_ACCOUNTS_ARE_ALLOW'))
     } catch (e) {
+      console.log(e)
       cb(new Error('AUTH_FAC_INCORRECT_GOOGLE_TOKEN'))
     }
   }
@@ -410,7 +411,7 @@ class GoogleAuth extends DbBase {
     if (password) {
       throw new UserError('Use Change Password endpoint to update user password')
     }
-    
+
     if (level) {
       assert.ok(typeof level === 'number', 'Level must be a number')
     }
