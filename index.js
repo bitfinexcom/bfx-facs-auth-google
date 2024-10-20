@@ -677,6 +677,11 @@ class GoogleAuth extends DbBase {
         u => u.email.toLowerCase()
       )
   }
+
+  async hasPassword(email) {
+    const admin = await this._getAdmin(email)
+    return !!admin?.password
+  }
 }
 
 module.exports = GoogleAuth
