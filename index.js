@@ -178,7 +178,7 @@ class GoogleAuth extends DbBase {
       const { valid, level, extra } = await this._validAdminUserGoogleEmail(email)
       return (valid)
         ? this._createAdminToken(email, ip, level, extra, cb)
-        : cb(new Error('AUTH_FAC_ONLY_BITFINEX_ACCOUNTS_ARE_ALLOW'))
+        : cb(new Error('AUTH_FAC_ACCOUNT_IS_NOT_VALID'))
     } catch (e) {
       console.log(e)
       cb(new Error('AUTH_FAC_INCORRECT_GOOGLE_TOKEN'))
