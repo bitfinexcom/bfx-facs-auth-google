@@ -303,7 +303,7 @@ class GoogleAuth extends DbBase {
       const adm = await this._getAdmin(email, false)
       if (adm) return adm
 
-      return this.addAdmin(admin)
+      return this.addAdmin({ ...admin })
     })
 
     await Promise.all(tasks)
