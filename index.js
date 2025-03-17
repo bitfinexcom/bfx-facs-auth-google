@@ -11,6 +11,7 @@ const uuidv4 = require('uuid/v4')
 const { google } = require('googleapis')
 const { UserError } = require('./errors')
 const migrations = require('./migrations')
+const { cloneDeep } = require('@bitfinexcom/lib-js-util-base')
 
 const FORMS_FIELD = 'forms'
 
@@ -303,7 +304,7 @@ class GoogleAuth extends DbBase {
       const adm = await this._getAdmin(email, false)
       if (adm) return adm
 
-      return this.addAdmin({ ...admin })
+      return this.addAdmin(cloneDeep(admin))
     })
 
     await Promise.all(tasks)
