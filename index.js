@@ -251,7 +251,7 @@ class GoogleAuth extends DbBase {
     return data && this.checkAdmAccessLevel(data.username, level)
   }
 
-  _getOAuth2Client () {
+  async _getOAuth2Client () {
     const { clientId, clientSecret } = this.conf.google
     return new google.auth.OAuth2(
       clientId,
@@ -259,26 +259,41 @@ class GoogleAuth extends DbBase {
     )
   }
 
-  async googleEmailFromToken (token) {
+  /**
+   * returns the user info from the google token based on the payload and scope expected profile and email 
+   * @param {{ credential: string, access_token: string, token_type: string, expires_in: number, id_token: string, scope: string }} payload
+   * @returns { Promise<Object> }
+   */
+  async googleUserInfoFromToken (payload) {
     const oAuth2Client = await this._getOAuth2Client()
-    if (token?.credential) {
+    
+    if (payload?.credential) {
       const ticket = await oAuth2Client.verifyIdToken({
-        idToken: token.credential
+        idToken: payload.credential
       })
-
-      const payload = ticket.getPayload()
-      return payload.email
+      return ticket.getPayload()
     }
-    oAuth2Client.setCredentials(token)
+
+    oAuth2Client.setCredentials(payload)
     const oauth2 = google.oauth2({ version: 'v2', auth: oAuth2Client })
 
     return new Promise((resolve, reject) => {
       oauth2.userinfo.get(
         (err, data) => {
           if (err) reject(new Error('AUTH_FAC_ERROR_ASK_EMAIL:' + err.toString()))
-          else resolve(data && data.data && data.data.email)
+          else resolve(data?.data)
         })
     })
+  }
+
+  /**
+   * returns the email from the google token based on the payload and scope at least email 
+   * @param {{ credential: string, access_token: string, token_type: string, expires_in: number, id_token: string, scope: string }} payload
+   * @returns { Promise<string> }
+   */
+  async googleEmailFromToken (payload) {
+    const userInfo = await this.googleUserInfoFromToken(payload)
+    return userInfo?.email
   }
 
   async _whiteListEmail (sentEmail) {
