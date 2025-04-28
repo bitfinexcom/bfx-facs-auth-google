@@ -251,7 +251,7 @@ class GoogleAuth extends DbBase {
     return data && this.checkAdmAccessLevel(data.username, level)
   }
 
-  async _getOAuth2Client () {
+   _getOAuth2Client () {
     const { clientId, clientSecret } = this.conf.google
     return new google.auth.OAuth2(
       clientId,
@@ -265,7 +265,7 @@ class GoogleAuth extends DbBase {
    * @returns { Promise<Object> }
    */
   async googleUserInfoFromToken (payload) {
-    const oAuth2Client = await this._getOAuth2Client()
+    const oAuth2Client = this._getOAuth2Client()
     
     if (payload?.credential) {
       const ticket = await oAuth2Client.verifyIdToken({
@@ -277,13 +277,12 @@ class GoogleAuth extends DbBase {
     oAuth2Client.setCredentials(payload)
     const oauth2 = google.oauth2({ version: 'v2', auth: oAuth2Client })
 
-    return new Promise((resolve, reject) => {
-      oauth2.userinfo.get(
-        (err, data) => {
-          if (err) reject(new Error('AUTH_FAC_ERROR_ASK_EMAIL:' + err.toString()))
-          else resolve(data?.data)
-        })
-    })
+    try {
+      const userInfo = await oauth2.userinfo.get()
+      return userInfo?.data
+    } catch (error) {
+      throw new Error('AUTH_FAC_ERROR_ASK_EMAIL:' + error.toString())
+    }
   }
 
   /**
