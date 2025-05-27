@@ -251,7 +251,7 @@ class GoogleAuth extends DbBase {
     return data && this.checkAdmAccessLevel(data.username, level)
   }
 
-   _getOAuth2Client () {
+  _getOAuth2Client () {
     const { clientId, clientSecret } = this.conf.google
     return new google.auth.OAuth2(
       clientId,
