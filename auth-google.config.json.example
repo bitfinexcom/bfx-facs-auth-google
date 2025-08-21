@@ -2,7 +2,10 @@
   "a0": {
     "google" : {
       "clientId": "",
-      "clientSecret": ""
+      "clientSecret": "",
+      "redirectUris": {
+        "sso_auth" : "",
+      }
     },
     "GOOGLE_WHITE_LIST_EMAILS" : [
     ],

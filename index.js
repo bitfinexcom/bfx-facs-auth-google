@@ -173,6 +173,19 @@ class GoogleAuth extends DbBase {
       : cb(new Error('AUTH_FAC_LOGIN_INCORRECT_USERNAME_PASSWORD'))
   }
 
+  /**
+   * this is used to validate code generated from google sso to fetch access token, id token
+   * we use id token to get email and validate
+   * @param {string} code
+   * @param {'sso_auth'} redirectUriKey
+   * @returns {Promise<Credentials>}
+   */
+  async getTokensFromCode (code, redirectUriKey) {
+    const oAuth2Client = this._getOAuth2Client(redirectUriKey)
+    const { tokens } = await oAuth2Client.getToken(code)
+    return tokens
+  }
+
   async _loginAdminGoogle (params, ip, cb) {
     try {
       const email = await this.googleEmailFromToken(params)
@@ -251,29 +264,29 @@ class GoogleAuth extends DbBase {
     return data && this.checkAdmAccessLevel(data.username, level)
   }
 
-  _getOAuth2Client () {
-    const { clientId, clientSecret } = this.conf.google
+  _getOAuth2Client (redirectUriKey = undefined) {
+    const { clientId, clientSecret, redirectUris } = this.conf.google
     return new google.auth.OAuth2(
       clientId,
-      clientSecret
+      clientSecret,
+      redirectUriKey ? redirectUris[redirectUriKey] : undefined
     )
   }
 
   /**
-   * returns the user info from the google token based on the payload and scope expected profile and email 
+   * returns the user info from the google token based on the payload and scope expected profile and email
    * @param {{ credential: string, access_token: string, token_type: string, expires_in: number, id_token: string, scope: string }} payload
    * @returns { Promise<Object> }
    */
   async googleUserInfoFromToken (payload) {
     const oAuth2Client = this._getOAuth2Client()
-    
+
     if (payload?.credential) {
       const ticket = await oAuth2Client.verifyIdToken({
         idToken: payload.credential
       })
       return ticket.getPayload()
     }
-
     oAuth2Client.setCredentials(payload)
     const oauth2 = google.oauth2({ version: 'v2', auth: oAuth2Client })
 
@@ -286,7 +299,7 @@ class GoogleAuth extends DbBase {
   }
 
   /**
-   * returns the email from the google token based on the payload and scope at least email 
+   * returns the email from the google token based on the payload and scope at least email
    * @param {{ credential: string, access_token: string, token_type: string, expires_in: number, id_token: string, scope: string }} payload
    * @returns { Promise<string> }
    */
@@ -501,7 +514,8 @@ class GoogleAuth extends DbBase {
       )
     })
   }
-  async resetAdminPassword(email, newPassword, passwordResetToken) {
+
+  async resetAdminPassword (email, newPassword, passwordResetToken) {
     assert.ok(this.conf.useDB, 'Cannot add admins if DB is not available')
 
     assert.ok(typeof email === 'string', 'Email is required')
@@ -693,7 +707,7 @@ class GoogleAuth extends DbBase {
       )
   }
 
-  async hasPassword(email) {
+  async hasPassword (email) {
     const admin = await this._getAdmin(email)
     return !!admin?.password
   }
