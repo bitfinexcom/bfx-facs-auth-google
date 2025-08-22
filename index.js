@@ -61,6 +61,14 @@ const tableName = 'admin_users'
  *  token_type: string | null;
  *  expiry_date: string | null;
  * }} Credentials
+ * @typedef {{
+ *  access_token: string | null;
+ *  token_type: string | null;
+ *  expiry_date: number | null;
+ *  refresh_token?: string | null;
+ *  id_token?: string | null;
+ *  scope?: string;
+ * }} TokenCredentials
  * @typedef { AddedAdminT & {
  *  username: string,
  *  token: string,
@@ -178,7 +186,7 @@ class GoogleAuth extends DbBase {
    * we use id token to get email and validate
    * @param {string} code
    * @param {'sso_auth'} redirectUriKey
-   * @returns {Promise<Credentials>}
+   * @returns {Promise<TokenCredentials>}
    */
   async getTokensFromCode (code, redirectUriKey) {
     const oAuth2Client = this._getOAuth2Client(redirectUriKey)
