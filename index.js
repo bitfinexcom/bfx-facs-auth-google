@@ -333,6 +333,8 @@ class GoogleAuth extends DbBase {
   async _saveAdminsFromConfig () {
     const admins = this.conf.ADM_USERS
     if (!(admins && Array.isArray(admins))) return true
+    const adminDbHasData = await this._checkIfAdminDbHasData()
+    if (adminDbHasData) return true
 
     const tasks = admins.map(async (admin) => {
       const { email } = admin
@@ -623,6 +625,16 @@ class GoogleAuth extends DbBase {
     if (!admin) throw new Error('Searched admin was not found')
 
     return !!(admin.level === 0 && admin.manageAdminsPrivilege)
+  }
+
+  _checkIfAdminDbHasData () {
+    return new Promise((resolve, reject) => {
+      const query = `SELECT EXISTS(SELECT 1 FROM ${tableName}) as exist`
+      this.db.get(query, (err, row) => {
+        if (err) return reject(err)
+        resolve(row?.exist)
+      })
+    })
   }
 
   /**
