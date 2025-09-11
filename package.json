@@ -1,6 +1,6 @@
 {
   "name": "bfx-facs-auth-google",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "private": false,
   "description": "Bitfinex Google Oauth Facility",
   "author": {
