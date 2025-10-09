@@ -9,6 +9,7 @@ const path = require('path')
 const conf = require('./config/facs/auth-google.config')
 
 const AuthGoogle = require('../')
+const { omit } = require('@bitfinexcom/lib-js-util-base')
 
 const dbPath = path.join(__dirname, './db/')
 const ctx = { root: './test' }
@@ -56,5 +57,59 @@ describe('forms field', () => {
     const res = await authGoogle.getAdmin(testAdminEmail)
 
     assert.deepEqual(res.forms, testForms)
+  })
+
+  it('should add admin successfully with fetchMotivationsPrivilege', async () => {
+    await authGoogle.addAdmin({
+      ...testAdminWithForms,
+      fetchMotivationsPrivilege: true
+    })
+
+    const res = await authGoogle.getAdmin(testAdminEmail)
+
+    assert.strictEqual(res.fetchMotivationsPrivilege, 1)
+  })
+
+  it('should throw error when adding admin with fetchMotivationsPrivilege not being boolean', async () => {
+    try {
+      await authGoogle.addAdmin({
+        ...testAdminWithForms,
+        fetchMotivationsPrivilege: 'not boolean'
+      })
+      throw new Error('SHOULD_NOT_REACH_HERE')
+    } catch (e) {
+      assert.ok(e instanceof assert.AssertionError)
+      assert.strictEqual(e.message, 'fetchMotivationsPrivilege should be a boolean')
+    }
+  })
+
+  it('should edit admin successfully with fetchMotivationsPrivilege', async () => {
+    await authGoogle.addAdmin(testAdminWithForms)
+    const adminBeforeUpdate = await authGoogle.getAdmin(testAdminEmail)
+    assert.ok(!adminBeforeUpdate.fetchMotivationsPrivilege)
+
+    await authGoogle.updateAdmin(testAdminEmail, {
+      ...omit(testAdminWithForms, ['email', 'password', 'forms']),
+      fetchMotivationsPrivilege: true
+    })
+    const adminAfterUpdate = await authGoogle.getAdmin(testAdminEmail)
+    assert.strictEqual(adminAfterUpdate.fetchMotivationsPrivilege, 1)
+  })
+
+  it('should throw error when editing admin with fetchMotivationsPrivilege not being boolean', async () => {
+    await authGoogle.addAdmin(testAdminWithForms)
+    const adminBeforeUpdate = await authGoogle.getAdmin(testAdminEmail)
+    assert.ok(!adminBeforeUpdate.fetchMotivationsPrivilege)
+
+    try {
+      await authGoogle.updateAdmin(testAdminEmail, {
+        ...omit(testAdminWithForms, ['email', 'password', 'forms']),
+        fetchMotivationsPrivilege: 'not boolean'
+      })
+      throw new Error('SHOULD_NOT_REACH_HERE')
+    } catch (e) {
+      assert.ok(e instanceof assert.AssertionError)
+      assert.strictEqual(e.message, 'fetchMotivationsPrivilege should be a boolean')
+    }
   })
 })

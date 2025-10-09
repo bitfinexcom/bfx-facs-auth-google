@@ -45,6 +45,7 @@ const tableName = 'admin_users'
  *  blockPrivilege?: boolean,
  *  analyticsPrivilege?: boolean,
  *  manageAdminsPrivilege?: boolean,
+ *  fetchMotivationsPrivilege?: boolean,
  *  passwordResetToken?: string,
  *  passwordResetSentAt?: Date,
  *  company?: string,
@@ -362,6 +363,7 @@ class GoogleAuth extends DbBase {
       blockPrivilege,
       analyticsPrivilege,
       manageAdminsPrivilege,
+      fetchMotivationsPrivilege,
       company
     } = user
 
@@ -386,6 +388,10 @@ class GoogleAuth extends DbBase {
 
     if (manageAdminsPrivilege) {
       assert.ok(typeof manageAdminsPrivilege === 'boolean', 'manageAdminsPrivilege should be a boolean')
+    }
+
+    if (fetchMotivationsPrivilege) {
+      assert.ok(typeof fetchMotivationsPrivilege === 'boolean', 'fetchMotivationsPrivilege should be a boolean')
     }
 
     if (company) {
@@ -417,6 +423,7 @@ class GoogleAuth extends DbBase {
             blockPrivilege,
             analyticsPrivilege,
             manageAdminsPrivilege,
+            fetchMotivationsPrivilege,
             company,
             active: true,
             id: this.lastID
@@ -436,6 +443,7 @@ class GoogleAuth extends DbBase {
       blockPrivilege,
       analyticsPrivilege,
       manageAdminsPrivilege,
+      fetchMotivationsPrivilege,
       company,
       active
     } = user
@@ -468,6 +476,10 @@ class GoogleAuth extends DbBase {
 
     if (manageAdminsPrivilege) {
       assert.ok(typeof manageAdminsPrivilege === 'boolean', 'manageAdminsPrivilege should be a boolean')
+    }
+
+    if (fetchMotivationsPrivilege) {
+      assert.ok(typeof fetchMotivationsPrivilege === 'boolean', 'fetchMotivationsPrivilege should be a boolean')
     }
 
     if (company) {
@@ -644,7 +656,7 @@ class GoogleAuth extends DbBase {
   async getAdmin (email, active = true) {
     const admin = await this._getAdmin(email, active)
     const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
-      'analyticsPrivilege', 'manageAdminsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD]
+      'analyticsPrivilege', 'manageAdminsPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD]
 
     if (this.conf.useDB && admin && admin[FORMS_FIELD]) {
       admin[FORMS_FIELD] = JSON.parse(admin[FORMS_FIELD])
