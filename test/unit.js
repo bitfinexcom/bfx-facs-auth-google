@@ -112,4 +112,28 @@ describe('forms field', () => {
       assert.strictEqual(e.message, 'fetchMotivationsPrivilege should be a boolean')
     }
   })
+
+  it('should return true when admin has fetch motivations privilege', async () => {
+    await authGoogle.addAdmin({
+      ...testAdminWithForms,
+      level: 1,
+      fetchMotivationsPrivilege: true
+    })
+
+    const res = await authGoogle.checkAdmHasFetchMotivationsPrivilege(testAdminEmail)
+
+    assert.ok(res)
+  })
+
+  it('should return false when admin does not have fetch motivations privilege', async () => {
+    await authGoogle.addAdmin({
+      ...testAdminWithForms,
+      level: 1,
+      fetchMotivationsPrivilege: false
+    })
+
+    const res = await authGoogle.checkAdmHasFetchMotivationsPrivilege(testAdminEmail)
+
+    assert.ok(!res)
+  })
 })

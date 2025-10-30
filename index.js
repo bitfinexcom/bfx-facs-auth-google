@@ -639,6 +639,13 @@ class GoogleAuth extends DbBase {
     return !!(admin.level === 0 && admin.manageAdminsPrivilege)
   }
 
+  async checkAdmHasFetchMotivationsPrivilege (adminEmail) {
+    const admin = await this._getAdmin(adminEmail)
+    if (!admin) throw new Error('Searched admin was not found')
+
+    return !!(admin.level === 0 || admin.fetchMotivationsPrivilege)
+  }
+
   _checkIfAdminDbHasData () {
     return new Promise((resolve, reject) => {
       const query = `SELECT EXISTS(SELECT 1 FROM ${tableName}) as exist`
