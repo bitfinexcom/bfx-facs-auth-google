@@ -1,7 +1,8 @@
 'use strict'
 
 const TABLES = {
-  ADMIN_USERS: 'admin_users'
+  ADMIN_USERS: 'admin_users',
+  DAILY_LIMITS: 'daily_limits'
 }
 
 const migrations = [
