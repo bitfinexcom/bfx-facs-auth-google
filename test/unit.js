@@ -146,7 +146,25 @@ describe('forms field', () => {
       const level = 0
       const category = VALID_DAILY_LIMIT_CATEGORIES[0]
 
-      // TODO: implement tests for creation and edition cases
+      it('should create succesfully a level daily limit', async () => {
+        const levelDailyLimit = await authGoogle.setLevelDailyLimit(level, category, { alert: 0, block: 0 })
+        assert.ok(levelDailyLimit)
+      })
+
+      // TODO: fix this test, it's not working, for some reason getLevelDailyLimit is returning undefined, check internal SELECT behavior
+      it('should retrieve succesfully a level daily limit', async () => {
+        const levelDailyLimit = await authGoogle.setLevelDailyLimit(level, category, { alert: 0, block: 0 })
+        assert.ok(levelDailyLimit)
+        const retrievedLevelDailyLimit = await authGoogle.getLevelDailyLimit(level, category)
+        assert.ok(retrievedLevelDailyLimit)
+      })
+
+      it('should update succesfully a level daily limit', async () => {
+        const levelDailyLimit = await authGoogle.setLevelDailyLimit(level, category, { alert: 0, block: 0 })
+        assert.ok(levelDailyLimit)
+        await authGoogle.setLevelDailyLimit(level, category, { alert: 10, block: 20 })
+        assert.ok(levelDailyLimit)
+      })
 
       it('should throw error when trying to set a level daily limit with non numeric value for admin level', async () => {
         const invalidAdminLevel = 'non numeric value'
@@ -208,6 +226,50 @@ describe('forms field', () => {
         } catch (e) {
           assert.ok(e instanceof UserError)
           assert.strictEqual(e.message, 'When creating a level daily limit both alert and block must be provided')
+        }
+      })
+
+      it('should throw error when trying to set a level daily limit with alert being not integer', async () => {
+        const invalidAlert = 1.1
+        try {
+          await authGoogle.setLevelDailyLimit(level, category, { alert: invalidAlert, block: 0 })
+          throw new Error('SHOULD_NOT_REACH_HERE')
+        } catch (e) {
+          assert.ok(e instanceof UserError)
+          assert.strictEqual(e.message, 'When alert value is provided, must be integer and greater or equal to zero')
+        }
+      })
+
+      it('should throw error when trying to set a level daily limit with alert being an integer lower than zero', async () => {
+        const invalidAlert = -1
+        try {
+          await authGoogle.setLevelDailyLimit(level, category, { alert: invalidAlert, block: 0 })
+          throw new Error('SHOULD_NOT_REACH_HERE')
+        } catch (e) {
+          assert.ok(e instanceof UserError)
+          assert.strictEqual(e.message, 'When alert value is provided, must be integer and greater or equal to zero')
+        }
+      })
+
+      it('should throw error when trying to set a level daily limit with alert being not integer', async () => {
+        const invalidBlock = 1.1
+        try {
+          await authGoogle.setLevelDailyLimit(level, category, { alert: 0, block: invalidBlock })
+          throw new Error('SHOULD_NOT_REACH_HERE')
+        } catch (e) {
+          assert.ok(e instanceof UserError)
+          assert.strictEqual(e.message, 'When block value is provided, must be integer and greater or equal to zero')
+        }
+      })
+
+      it('should throw error when trying to set a level daily limit with alert being an integer lower than zero', async () => {
+        const invalidBlock = -1
+        try {
+          await authGoogle.setLevelDailyLimit(level, category, { alert: 0, block: invalidBlock })
+          throw new Error('SHOULD_NOT_REACH_HERE')
+        } catch (e) {
+          assert.ok(e instanceof UserError)
+          assert.strictEqual(e.message, 'When block value is provided, must be integer and greater or equal to zero')
         }
       })
 
