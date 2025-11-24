@@ -11,7 +11,8 @@ const uuidv4 = require('uuid/v4')
 const { google } = require('googleapis')
 const { UserError } = require('./errors')
 const migrations = require('./migrations')
-const { cloneDeep } = require('@bitfinexcom/lib-js-util-base')
+const { cloneDeep, isNil } = require('@bitfinexcom/lib-js-util-base')
+const { VALID_DAILY_LIMIT_CATEGORIES, MIN_ADMIN_LEVEL, DB_TABLES, MAX_ADMIN_LEVEL } = require('./shared')
 
 const FORMS_FIELD = 'forms'
 
@@ -36,7 +37,6 @@ async function verify (password, hash) {
   })
 }
 
-const tableName = 'admin_users'
 /**
  * @typedef {{
  *  email: string,
@@ -80,7 +80,7 @@ class GoogleAuth extends DbBase {
   constructor (caller, opts = {}, ctx) {
     opts.name = 'auth-google'
     opts.runSqlAtStart = [
-      `CREATE TABLE IF NOT EXISTS ${tableName} (
+      `CREATE TABLE IF NOT EXISTS ${DB_TABLES.ADMIN_USERS} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT UNIQUE NOT NULL,
         password TEXT,
@@ -96,7 +96,7 @@ class GoogleAuth extends DbBase {
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
         ${FORMS_FIELD} TEXT
       )`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS uidx_email ON ${tableName}(email ASC)`
+      `CREATE UNIQUE INDEX IF NOT EXISTS uidx_email ON ${DB_TABLES.ADMIN_USERS}(email ASC)`
     ]
     super(caller, opts, ctx)
 
@@ -411,7 +411,7 @@ class GoogleAuth extends DbBase {
       const keys = Object.keys(user)
 
       this.db.run(
-        `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${Array(keys.length).fill('?').join(', ')})`,
+        `INSERT INTO ${DB_TABLES.ADMIN_USERS} (${keys.join(', ')}) VALUES (${Array(keys.length).fill('?').join(', ')})`,
         keys.map(key => key === FORMS_FIELD ? JSON.stringify(user[key]) : user[key]),
         function (err) {
           if (err) return reject(err)
@@ -497,7 +497,7 @@ class GoogleAuth extends DbBase {
       const keys = Object.keys(user)
 
       this.db.run(
-        `UPDATE ${tableName} SET ${keys.join(' = ?, ')} = ? WHERE id = ?`,
+        `UPDATE ${DB_TABLES.ADMIN_USERS} SET ${keys.join(' = ?, ')} = ? WHERE id = ?`,
         keys.map(key => user[key]).concat(adm.id),
         function (err) {
           if (err) return reject(err)
@@ -526,7 +526,7 @@ class GoogleAuth extends DbBase {
 
     return new Promise((resolve, reject) => {
       this.db.run(
-        `UPDATE ${tableName} SET password = ? WHERE id = ?`,
+        `UPDATE ${DB_TABLES.ADMIN_USERS} SET password = ? WHERE id = ?`,
         [password, adm.id],
         function (err) {
           if (err) return reject(err)
@@ -554,7 +554,7 @@ class GoogleAuth extends DbBase {
 
     return new Promise((resolve, reject) => {
       this.db.run(
-        `UPDATE ${tableName} SET password = ? WHERE id = ?`,
+        `UPDATE ${DB_TABLES.ADMIN_USERS} SET password = ? WHERE id = ?`,
         [password, admin.id],
         function (err) {
           if (err) return reject(err)
@@ -570,7 +570,7 @@ class GoogleAuth extends DbBase {
 
     return new Promise((resolve, reject) => {
       this.db.serialize(() => {
-        const statement = this.db.prepare(`DELETE FROM ${tableName} WHERE id = ? OR LOWER(email) = ?`)
+        const statement = this.db.prepare(`DELETE FROM ${DB_TABLES.ADMIN_USERS} WHERE id = ? OR LOWER(email) = ?`)
         statement.run([idOrEmail, `${idOrEmail}`.toLowerCase()])
         statement.finalize(err => {
           if (err) return reject(err)
@@ -648,7 +648,7 @@ class GoogleAuth extends DbBase {
 
   _checkIfAdminDbHasData () {
     return new Promise((resolve, reject) => {
-      const query = `SELECT EXISTS(SELECT 1 FROM ${tableName}) as exist`
+      const query = `SELECT EXISTS(SELECT 1 FROM ${DB_TABLES.ADMIN_USERS}) as exist`
       this.db.get(query, (err, row) => {
         if (err) return reject(err)
         resolve(row?.exist)
@@ -685,8 +685,8 @@ class GoogleAuth extends DbBase {
   async _getAdminFromDB (email, active) {
     return new Promise((resolve, reject) => {
       const query = active
-        ? `SELECT * FROM ${tableName} WHERE LOWER(email) = ? AND active = 1`
-        : `SELECT * FROM ${tableName} WHERE LOWER(email) = ?`
+        ? `SELECT * FROM ${DB_TABLES.ADMIN_USERS} WHERE LOWER(email) = ? AND active = 1`
+        : `SELECT * FROM ${DB_TABLES.ADMIN_USERS} WHERE LOWER(email) = ?`
 
       this.db.get(query, [email.toLowerCase()], (err, row) => {
         if (err) return reject(err)
@@ -724,8 +724,8 @@ class GoogleAuth extends DbBase {
       }, '')
 
       const query = active || company
-        ? `SELECT LOWER(email) AS email FROM ${tableName} WHERE ${whereClause} ORDER BY email ASC`
-        : `SELECT LOWER(email) AS email FROM ${tableName} ORDER BY email ASC`
+        ? `SELECT LOWER(email) AS email FROM ${DB_TABLES.ADMIN_USERS} WHERE ${whereClause} ORDER BY email ASC`
+        : `SELECT LOWER(email) AS email FROM ${DB_TABLES.ADMIN_USERS} ORDER BY email ASC`
 
       this.db.all(query, [], (err, rows) => {
         if (err) return reject(err)
@@ -750,6 +750,54 @@ class GoogleAuth extends DbBase {
     const admin = await this._getAdmin(email)
     return !!admin?.password
   }
+
+  async setLevelDailyLimit (level, category, { alert, block } = {}) {
+    if (!Number.isInteger(level) || !_.inRange(level, MIN_ADMIN_LEVEL, MAX_ADMIN_LEVEL + 1)) throw new UserError(`"${level}" as admin level is invalid`)
+    if (!VALID_DAILY_LIMIT_CATEGORIES.some(c => c === category)) throw new UserError(`"${category}" as daily limit category value is invalid`)
+
+    const existingLevelDailyLimit = await new Promise((resolve, reject) => {
+      const query = `SELECT * FROM ${DB_TABLES.LEVEL_DAILY_LIMITS} WHERE level = ? AND category = ?`
+      this.db.get(query, [level, category], (err, row) => {
+        if (err) return reject(err)
+        resolve(row)
+      })
+    })
+
+    if (isNil(alert) && isNil(block)) throw new UserError('Neither alert nor block values are provided')
+    if (!existingLevelDailyLimit && ((!isNil(alert) && isNil(block)) || (isNil(alert) && !isNil(block)))) throw new UserError('When creating a level daily limit both alert and block must be provided')
+    if (!isNil(alert) && (!Number.isInteger(alert) || alert < 0)) throw new UserError('When alert value is provided, must be greater or equal to zero')
+    if (!isNil(block) && (!Number.isInteger(block) || block < 0)) throw new UserError('When block value is provided, must be greater or equal to zero')
+
+    const cb = (resolve, reject) => function (err, result) {
+      if (err) return reject(err)
+      resolve(result)
+    }
+
+    if (existingLevelDailyLimit) {
+      const valuesToUpdate = {}
+      if (!isNil(alert)) valuesToUpdate.alert = alert
+      if (!isNil(block)) valuesToUpdate.block = block
+      const fields = Object.keys(valuesToUpdate)
+
+      return new Promise((resolve, reject) => {
+        this.db.run(
+          `UPDATE ${DB_TABLES.LEVEL_DAILY_LIMITS} SET ${fields.join(' = ?, ')} = ? WHERE level = ? AND category = ?`,
+          Object.values(valuesToUpdate).concat([level, category]),
+          cb(resolve, reject)
+        )
+      })
+    } else {
+      return new Promise((resolve, reject) => {
+        this.db.run(
+          `INSERT INTO ${DB_TABLES.LEVEL_DAILY_LIMITS} (level, category, alert, block) VALUES (?, ?, ?, ?)`,
+          [level, category, alert, block],
+          cb(resolve, reject)
+        )
+      })
+    }
+  }
+
+  // TODO: implement code related to managing daily limit config of admin users, most probably in already existing methods (create as well specific methods for those operations?)
 }
 
 module.exports = GoogleAuth

@@ -10,6 +10,8 @@ const conf = require('./config/facs/auth-google.config')
 
 const AuthGoogle = require('../')
 const { omit } = require('@bitfinexcom/lib-js-util-base')
+const { VALID_DAILY_LIMIT_CATEGORIES } = require('../shared')
+const { UserError } = require('../errors')
 
 const dbPath = path.join(__dirname, './db/')
 const ctx = { root: './test' }
@@ -137,5 +139,81 @@ describe('forms field', () => {
 
       assert.ok(!res)
     })
+  })
+
+  describe.only('daily limits', () => {
+    describe('for admin levels', () => {
+      const level = 0
+      const category = VALID_DAILY_LIMIT_CATEGORIES[0]
+
+      // TODO: implement tests for creation and edition cases
+
+      it('should throw error when trying to set a level daily limit with non numeric value for admin level', async () => {
+        const invalidAdminLevel = 'non numeric value'
+        try {
+          await authGoogle.setLevelDailyLimit(invalidAdminLevel, category, { alert: 0, block: 0 })
+          throw new Error('SHOULD_NOT_REACH_HERE')
+        } catch (e) {
+          assert.ok(e instanceof UserError)
+          assert.strictEqual(e.message, `"${invalidAdminLevel}" as admin level is invalid`)
+        }
+      })
+
+      it('should throw error when trying to set a level daily limit with a numeric admin level beyond the valid range (between 0 and 4, inclusive)', async () => {
+        const invalidAdminLevel = -1
+        try {
+          await authGoogle.setLevelDailyLimit(invalidAdminLevel, category, { alert: 0, block: 0 })
+          throw new Error('SHOULD_NOT_REACH_HERE')
+        } catch (e) {
+          assert.ok(e instanceof UserError)
+          assert.strictEqual(e.message, `"${invalidAdminLevel}" as admin level is invalid`)
+        }
+      })
+
+      it('should throw error when trying to set a level daily limit with an invalid category', async () => {
+        const invalidCategory = 'some invalid category'
+        try {
+          await authGoogle.setLevelDailyLimit(level, invalidCategory, { alert: 0, block: 0 })
+          throw new Error('SHOULD_NOT_REACH_HERE')
+        } catch (e) {
+          assert.ok(e instanceof UserError)
+          assert.strictEqual(e.message, `"${invalidCategory}" as daily limit category value is invalid`)
+        }
+      })
+
+      it('should throw error when trying to set a level daily limit with neither alert nor block', async () => {
+        try {
+          await authGoogle.setLevelDailyLimit(level, category)
+          throw new Error('SHOULD_NOT_REACH_HERE')
+        } catch (e) {
+          assert.ok(e instanceof UserError)
+          assert.strictEqual(e.message, 'Neither alert nor block values are provided')
+        }
+      })
+
+      it('should throw error when trying to create a level daily limit using only alert without block', async () => {
+        try {
+          await authGoogle.setLevelDailyLimit(level, category, { alert: 0 })
+          throw new Error('SHOULD_NOT_REACH_HERE')
+        } catch (e) {
+          assert.ok(e instanceof UserError)
+          assert.strictEqual(e.message, 'When creating a level daily limit both alert and block must be provided')
+        }
+      })
+
+      it('should throw error when trying to create a level daily limit using only block without alert', async () => {
+        try {
+          await authGoogle.setLevelDailyLimit(level, category, { block: 0 })
+          throw new Error('SHOULD_NOT_REACH_HERE')
+        } catch (e) {
+          assert.ok(e instanceof UserError)
+          assert.strictEqual(e.message, 'When creating a level daily limit both alert and block must be provided')
+        }
+      })
+
+      // TODO: implement remaining error cases tests
+    })
+
+    // TODO: implement tests related to managing daily limit config of admins
   })
 })
