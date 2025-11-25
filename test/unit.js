@@ -148,7 +148,7 @@ describe('index', () => {
       const level = 0
       const category = VALID_DAILY_LIMIT_CATEGORIES[0]
 
-      const assertError = async (fn, msg) => {
+      const assertUserError = async (fn, msg) => {
         try {
           await fn()
           throw new Error('SHOULD_NOT_REACH_HERE')
@@ -176,7 +176,7 @@ describe('index', () => {
 
         it('should throw error when trying to set an admin level daily limit with non numeric value for admin level', async () => {
           const invalidAdminLevel = 'non numeric value'
-          await assertError(
+          await assertUserError(
             async () => authGoogle.setAdminLevelDailyLimit(invalidAdminLevel, category, { alert: 0, block: 0 }),
             `"${invalidAdminLevel}" as admin level is invalid`
           )
@@ -195,28 +195,28 @@ describe('index', () => {
 
         it('should throw error when trying to set an admin level daily limit with an invalid category', async () => {
           const invalidCategory = 'some invalid category'
-          await assertError(
+          await assertUserError(
             async () => authGoogle.setAdminLevelDailyLimit(level, invalidCategory, { alert: 0, block: 0 }),
             `"${invalidCategory}" as daily limit category value is invalid`
           )
         })
 
         it('should throw error when trying to set an admin level daily limit with neither alert nor block', async () => {
-          await assertError(
+          await assertUserError(
             async () => authGoogle.setAdminLevelDailyLimit(level, category),
             'Neither alert nor block values are provided'
           )
         })
 
         it('should throw error when trying to create an admin level daily limit using only alert without block', async () => {
-          await assertError(
+          await assertUserError(
             async () => authGoogle.setAdminLevelDailyLimit(level, category, { alert: 0 }),
             'When creating an admin level daily limit both alert and block must be provided'
           )
         })
 
         it('should throw error when trying to create an admin level daily limit using only block without alert', async () => {
-          await assertError(
+          await assertUserError(
             async () => authGoogle.setAdminLevelDailyLimit(level, category, { block: 0 }),
             'When creating an admin level daily limit both alert and block must be provided'
           )
@@ -224,7 +224,7 @@ describe('index', () => {
 
         it('should throw error when trying to set an admin level daily limit with alert being not integer', async () => {
           const invalidAlert = 1.1
-          await assertError(
+          await assertUserError(
             async () => authGoogle.setAdminLevelDailyLimit(level, category, { alert: invalidAlert, block: 0 }),
             'When alert value is provided, must be integer and greater or equal to zero'
           )
@@ -232,7 +232,7 @@ describe('index', () => {
 
         it('should throw error when trying to set an admin level daily limit with alert being an integer lower than zero', async () => {
           const invalidAlert = -1
-          await assertError(
+          await assertUserError(
             async () => authGoogle.setAdminLevelDailyLimit(level, category, { alert: invalidAlert, block: 0 }),
             'When alert value is provided, must be integer and greater or equal to zero'
           )
@@ -240,7 +240,7 @@ describe('index', () => {
 
         it('should throw error when trying to set an admin level daily limit with alert being not integer', async () => {
           const invalidBlock = 1.1
-          await assertError(
+          await assertUserError(
             async () => authGoogle.setAdminLevelDailyLimit(level, category, { alert: 0, block: invalidBlock }),
             'When block value is provided, must be integer and greater or equal to zero'
           )
@@ -248,7 +248,7 @@ describe('index', () => {
 
         it('should throw error when trying to set an admin level daily limit with alert being an integer lower than zero', async () => {
           const invalidBlock = -1
-          await assertError(
+          await assertUserError(
             async () => authGoogle.setAdminLevelDailyLimit(level, category, { alert: 0, block: invalidBlock }),
             'When block value is provided, must be integer and greater or equal to zero'
           )
@@ -265,7 +265,7 @@ describe('index', () => {
 
         it('should throw error when trying to get an admin level daily limit config with non numeric value for admin level', async () => {
           const invalidAdminLevel = 'non numeric value'
-          await assertError(
+          await assertUserError(
             async () => authGoogle.getAdminLevelDailyLimit(invalidAdminLevel, category),
             `"${invalidAdminLevel}" as admin level is invalid`
           )
@@ -273,7 +273,7 @@ describe('index', () => {
 
         it('should throw error when trying to get an admin level daily limit config with a numeric admin level beyond the valid range (between 0 and 4, inclusive)', async () => {
           const invalidAdminLevel = -1
-          await assertError(
+          await assertUserError(
             async () => authGoogle.getAdminLevelDailyLimit(invalidAdminLevel, category, { alert: 0, block: 0 }),
             `"${invalidAdminLevel}" as admin level is invalid`
           )
@@ -281,7 +281,7 @@ describe('index', () => {
 
         it('should throw error when trying to get an admin level daily limit with an invalid category', async () => {
           const invalidCategory = 'some invalid category'
-          await assertError(
+          await assertUserError(
             async () => authGoogle.getAdminLevelDailyLimit(level, invalidCategory),
             `"${invalidCategory}" as daily limit category value is invalid`
           )
@@ -303,7 +303,7 @@ describe('index', () => {
 
         it('should throw error when trying to get all daily limit configs associated to an admin level with non numeric value for admin level', async () => {
           const invalidAdminLevel = 'non numeric value'
-          await assertError(
+          await assertUserError(
             async () => authGoogle.getDailyLimitsByAdminLevel(invalidAdminLevel),
             `"${invalidAdminLevel}" as admin level is invalid`
           )
@@ -311,7 +311,7 @@ describe('index', () => {
 
         it('should throw error when trying to get all daily limit configs associated to an admin level with a numeric admin level beyond the valid range (between 0 and 4, inclusive)', async () => {
           const invalidAdminLevel = -1
-          await assertError(
+          await assertUserError(
             async () => authGoogle.getDailyLimitsByAdminLevel(invalidAdminLevel),
             `"${invalidAdminLevel}" as admin level is invalid`
           )
@@ -333,7 +333,7 @@ describe('index', () => {
 
         it('should throw error when trying to get all daily limit configs associated to an admin level with non numeric value for admin level', async () => {
           const invalidCategory = 'invalid category'
-          await assertError(
+          await assertUserError(
             async () => authGoogle.getDailyLimitsByCategory(invalidCategory),
             `"${invalidCategory}" as daily limit category value is invalid`
           )
@@ -356,7 +356,7 @@ describe('index', () => {
 
       const dailyLimitConfigErrMsg = 'dailyLimitConfig must be a DailyLimitConfigsByCategory object'
 
-      const assertError = async (fn, msg) => {
+      const assertAssertionError = async (fn, msg) => {
         try {
           await fn()
           throw new Error('SHOULD_NOT_REACH_HERE')
@@ -377,7 +377,7 @@ describe('index', () => {
         })
 
         it('should throw error when creating admin user with dailyConfig not being an object', async () => {
-          await assertError(
+          await assertAssertionError(
             async () => authGoogle.addAdmin({
               ...adminWithDailyLimitConfig,
               dailyLimitConfig: 'not an object'
@@ -387,7 +387,7 @@ describe('index', () => {
         })
 
         it('should throw error when creating admin user with dailyConfig object having an invalid category as key', async () => {
-          await assertError(
+          await assertAssertionError(
             async () => authGoogle.addAdmin({
               ...adminWithDailyLimitConfig,
               dailyLimitConfig: {
@@ -400,7 +400,7 @@ describe('index', () => {
         })
 
         it('should throw error when creating admin user with dailyConfig object having all valid keys but there is at least one not having both alert and block defined', async () => {
-          await assertError(
+          await assertAssertionError(
             async () => authGoogle.addAdmin({
               ...adminWithDailyLimitConfig,
               dailyLimitConfig: {
@@ -415,7 +415,7 @@ describe('index', () => {
         })
 
         it('should throw error when creating admin user with dailyConfig object having all valid keys but there is at least one having alert and/or block as not integers', async () => {
-          await assertError(
+          await assertAssertionError(
             async () => authGoogle.addAdmin({
               ...adminWithDailyLimitConfig,
               dailyLimitConfig: {
@@ -431,7 +431,7 @@ describe('index', () => {
         })
 
         it('should throw error when creating admin user with dailyConfig object having all valid keys but there is at least one having alert and/or block as negative integers', async () => {
-          await assertError(
+          await assertAssertionError(
             async () => authGoogle.addAdmin({
               ...adminWithDailyLimitConfig,
               dailyLimitConfig: {
@@ -464,14 +464,14 @@ describe('index', () => {
         })
 
         it('should throw error when trying to update admin user with dailyConfig not being an object', async () => {
-          await assertError(
+          await assertAssertionError(
             async () => authGoogle.updateAdmin(testAdminEmail, { dailyLimitConfig: 'not an object' }),
             dailyLimitConfigErrMsg
           )
         })
 
         it('should throw error when trying to update admin user with dailyConfig object having an invalid category as key', async () => {
-          await assertError(
+          await assertAssertionError(
             async () => authGoogle.updateAdmin(testAdminEmail, {
               dailyLimitConfig: {
                 ...dailyLimitConfig,
@@ -483,7 +483,7 @@ describe('index', () => {
         })
 
         it('should throw error when trying to update admin user with dailyConfig object having all valid keys but there is at least one not having both alert and block defined', async () => {
-          await assertError(
+          await assertAssertionError(
             async () => authGoogle.updateAdmin(testAdminEmail, {
               dailyLimitConfig: {
                 ...dailyLimitConfig,
@@ -497,7 +497,7 @@ describe('index', () => {
         })
 
         it('should throw error when trying to update admin user with dailyConfig object having all valid keys but there is at least one having alert and/or block as not integers', async () => {
-          await assertError(
+          await assertAssertionError(
             async () => authGoogle.updateAdmin(testAdminEmail, {
               dailyLimitConfig: {
                 ...dailyLimitConfig,
@@ -512,7 +512,7 @@ describe('index', () => {
         })
 
         it('should throw error when trying to update admin user with dailyConfig object having all valid keys but there is at least one having alert and/or block as negative integers', async () => {
-          await assertError(
+          await assertAssertionError(
             async () => authGoogle.updateAdmin(testAdminEmail, {
               dailyLimitConfig: {
                 ...dailyLimitConfig,

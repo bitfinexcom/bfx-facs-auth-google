@@ -789,7 +789,7 @@ class GoogleAuth extends DbBase {
     return !!admin?.password
   }
 
-  // TODO: move daily limits logic into its own module and invoke it it here?
+  // TODO: move daily limits logic into its own module and invoke it it here? For avoiding this module to keep growing.
 
   /**
    * Creates or update a daily limit configuration for a given combination of admin level and daily limit category
