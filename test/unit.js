@@ -142,6 +142,8 @@ describe('forms field', () => {
   })
 
   describe('daily limits', () => {
+    // TODO: apply corresponding refactors to duplicated code
+
     describe('for admin levels', () => {
       const level = 0
       const category = VALID_DAILY_LIMIT_CATEGORIES[0]

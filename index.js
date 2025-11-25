@@ -38,7 +38,6 @@ async function verify (password, hash) {
 }
 
 const tableName = DB_TABLES.ADMIN_USERS
-
 /**
  * @typedef {{
  *  email: string,
