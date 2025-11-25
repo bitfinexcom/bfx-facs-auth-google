@@ -527,10 +527,34 @@ describe('index', () => {
         })
       })
 
-      it('should return admin user with parsed dailyLimitConfig', async () => {
-        await authGoogle.addAdmin(adminWithDailyLimitConfig)
-        const res = await authGoogle.getAdmin(testAdminEmail)
-        assert.deepEqual(res.dailyLimitConfig, dailyLimitConfig)
+      describe('retrieving daily limit config', () => {
+        it('should return admin user with parsed dailyLimitConfig', async () => {
+          await authGoogle.addAdmin(adminWithDailyLimitConfig)
+          const res = await authGoogle.getAdmin(testAdminEmail)
+          assert.deepStrictEqual(res.dailyLimitConfig, dailyLimitConfig)
+        })
+
+        it('should retrieve the daily limit config of a given admin user', async () => {
+          await authGoogle.addAdmin(adminWithDailyLimitConfig)
+          await new Promise((resolve) => authGoogle.db.get('SELECT * FROM admin_users WHERE email=?', [testAdminEmail], (err, row) => {
+            if (err) throw err
+            assert.equal(row.dailyLimitConfig, JSON.stringify(dailyLimitConfig))
+            resolve()
+          }))
+          const retrievedDailyLimitConfig = await authGoogle.getAdminUserDailyLimitConfig(adminWithDailyLimitConfig.email)
+          assert.deepStrictEqual(retrievedDailyLimitConfig, retrievedDailyLimitConfig)
+        })
+
+        it('should retrieve null when no daily limit has been set for the admin', async () => {
+          await authGoogle.addAdmin(omit(adminWithDailyLimitConfig, ['dailyLimitConfig']))
+          await new Promise((resolve) => authGoogle.db.get('SELECT * FROM admin_users WHERE email=?', [testAdminEmail], (err, row) => {
+            if (err) throw err
+            assert.equal(row.dailyLimitConfig, null)
+            resolve()
+          }))
+          const retrievedDailyLimitConfig = await authGoogle.getAdminUserDailyLimitConfig(adminWithDailyLimitConfig.email)
+          assert.deepStrictEqual(retrievedDailyLimitConfig, null)
+        })
       })
     })
   })

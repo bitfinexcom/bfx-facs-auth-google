@@ -943,6 +943,16 @@ class GoogleAuth extends DbBase {
   _validateDailyLimitCategory (category) {
     if (!VALID_DAILY_LIMIT_CATEGORIES.some(c => c === category)) throw new UserError(`"${category}" as daily limit category value is invalid`)
   }
+
+  /**
+   * Retrieves the daily limit config associated to an admin
+   * @param {string} adminUserEmail - The email address associated to the admin.
+   * @returns {DailyLimitConfig|null} Returns either the fully fleshed daily limit config object associated to the admin, or `null` in case it hasn't been set yet.
+   */
+  async getAdminUserDailyLimitConfig (adminUserEmail) {
+    const admin = await this.getAdmin(adminUserEmail)
+    return (admin || {}).dailyLimitConfig || null
+  }
 }
 
 module.exports = GoogleAuth
