@@ -11,7 +11,7 @@ const uuidv4 = require('uuid/v4')
 const { google } = require('googleapis')
 const { UserError } = require('./errors')
 const migrations = require('./migrations')
-const { cloneDeep, isNil } = require('@bitfinexcom/lib-js-util-base')
+const { cloneDeep, isNil, pick } = require('@bitfinexcom/lib-js-util-base')
 const { VALID_DAILY_LIMIT_CATEGORIES, MIN_ADMIN_LEVEL, DB_TABLES, MAX_ADMIN_LEVEL } = require('./shared')
 
 const FORMS_FIELD = 'forms'
@@ -75,6 +75,14 @@ async function verify (password, hash) {
  *  token: string,
  *  expires_at: Date
  * }} LoginResp
+ * @typedef {(0|1|2|3|4)} AdminLevel
+ * @typedef {('opened'|'displayed')} AdminLevelDailyLimitCategory
+ * @typedef {{
+ *  alert: number
+ *  block: number
+ * }} AdminLevelDailyLimitConfig
+ * @typedef {Record<AdminLevelDailyLimitCategory, AdminLevelDailyLimitConfig>} AdminLevelDailyLimitConfigsByCategory
+ * @typedef {Record<AdminLevel, AdminLevelDailyLimitConfig>} AdminLevelDailyLimitConfigsByAdminLevel
  */
 class GoogleAuth extends DbBase {
   constructor (caller, opts = {}, ctx) {
@@ -753,8 +761,19 @@ class GoogleAuth extends DbBase {
 
   // TODO: move daily limits logic into its own module and invoke it it here?
 
-  // TODO: write jsdocs for method
-  async setLevelDailyLimit (level, category, { alert, block } = {}) {
+  /**
+   * Creates or update a daily limit configuration for a given combination of admin level and daily limit category
+   * @param {number} level - The admin level
+   * @param {AdminLevelDailyLimitCategory} category - The daily limit category
+   * @param {AdminLevelDailyLimitConfig} config - The configuration values for the admin level and category daily limit
+   * @throws {UserError} In the following cases:
+   * - admin level is not integer or it's not between 0 and 4 inclusive
+   * - category is neither `opened` nor `displayed`
+   * - `config.alert` and `config.block` are not provided, or at least one of them is provided but not integer or it's integer but not positive
+   * - the daily limit for the given admin level and category exists but `config.alert` and `config.block` are not provided
+   * @returns {Promise<boolean>} Resolves to `true` if daily limit configuration is created/updated successfully. Otherwise, triggers a rejection.
+   */
+  async setAdminLevelDailyLimit (level, category, config) {
     this._validateAdminLevel(level)
     this._validateDailyLimitCategory(category)
 
@@ -766,8 +785,10 @@ class GoogleAuth extends DbBase {
       })
     })
 
+    const { alert, block } = config ?? {}
+
     if (isNil(alert) && isNil(block)) throw new UserError('Neither alert nor block values are provided')
-    if (!existingLevelDailyLimit && ((!isNil(alert) && isNil(block)) || (isNil(alert) && !isNil(block)))) throw new UserError('When creating a level daily limit both alert and block must be provided')
+    if (!existingLevelDailyLimit && ((!isNil(alert) && isNil(block)) || (isNil(alert) && !isNil(block)))) throw new UserError('When creating an admin level daily limit both alert and block must be provided')
     if (!isNil(alert) && (!Number.isInteger(alert) || alert < 0)) throw new UserError('When alert value is provided, must be integer and greater or equal to zero')
     if (!isNil(block) && (!Number.isInteger(block) || block < 0)) throw new UserError('When block value is provided, must be integer and greater or equal to zero')
 
@@ -800,16 +821,22 @@ class GoogleAuth extends DbBase {
     }
   }
 
-  // TODO: write jsdocs for method
-  async getLevelDailyLimit (level, category) {
+  /**
+   * Retrieves a daily limit config associated to an admin level and a daily limit category
+   * @param {number} level - The admin level
+   * @param {AdminLevelDailyLimitCategory} category - The daily limit category
+   * @throws {UserError} In the following cases:
+   * - admin level is not integer or it's not between 0 and 4 inclusive
+   * - category is neither `opened` nor `displayed`
+   * @returns {Promise<AdminLevelDailyLimitConfig>} Resolves to a `AdminLevelDailyLimitConfig` object if there is a daily limit associated to the provided admin level and category. Otherwise, triggers a rejection.
+   */
+  async getAdminLevelDailyLimit (level, category) {
     this._validateAdminLevel(level)
     this._validateDailyLimitCategory(category)
 
-    // TODO: for some reason this SELECT seems not working properly, check TODO of test with title
-    // 'should retrieve succesfully a level daily limit'
     return new Promise((resolve, reject) => {
-      this.db.run(
-        `SELECT * FROM ${DB_TABLES.LEVEL_DAILY_LIMITS} WHERE level = ? AND category = ? LIMIT 1`,
+      this.db.get(
+        `SELECT alert, block FROM ${DB_TABLES.LEVEL_DAILY_LIMITS} WHERE level = ? AND category = ? LIMIT 1`,
         [level, category],
         function (err, row) {
           if (err) return reject(err)
@@ -819,17 +846,71 @@ class GoogleAuth extends DbBase {
     })
   }
 
-  // TODO: implement method for retrieving all limits for a given level, implement of course the corresponding tests
+  /**
+   * Retrieves all daily limit records associated to a given admin level
+   * @param {number} level - The admin level
+   * @throws {UserError} In the following cases:
+   * - admin level is not integer or it's not between 0 and 4 inclusive
+   * @returns {Promise<AdminLevelDailyLimitConfigsByCategory>} Resolves to a `AdminLevelDailyLimitConfigsByCategory` object. If an error is detected, triggers an exception.
+   */
+  async getDailyLimitsByAdminLevel (level) {
+    this._validateAdminLevel(level)
 
-  // TODO: implement method for retrieving all limits for a given category, implement of course the corresponding tests
+    return new Promise((resolve, reject) => {
+      this.db.all(
+        `SELECT category, alert, block FROM ${DB_TABLES.LEVEL_DAILY_LIMITS} WHERE level = ?`,
+        [level],
+        function (err, rows) {
+          if (err) return reject(err)
+          resolve((rows ?? []).reduce((acc, curr) => {
+            acc[curr.category] = pick(curr, ['alert', 'block'])
+            return acc
+          }, {}))
+        }
+      )
+    })
+  }
 
-  // TODO: write jsdocs for method
-  _validateAdminLevel(level) {
+  /**
+   * Retrieves all daily limit records associated to a given category
+   * @param {AdminLevelDailyLimitCategory} category - The daily limit category
+   * @throws {UserError} In the following cases:
+   * - category is neither `opened` nor `displayed`
+   * @returns {Promise<AdminLevelDailyLimitConfigsByAdminLevel>} Resolves to a `AdminLevelDailyLimitConfigsByAdminLevel` object. If an error is detected, triggers an exception.
+   */
+  async getDailyLimitsByCategory (category) {
+    this._validateDailyLimitCategory(category)
+
+    return new Promise((resolve, reject) => {
+      this.db.all(
+        `SELECT level, alert, block FROM ${DB_TABLES.LEVEL_DAILY_LIMITS} WHERE category = ?`,
+        [category],
+        function (err, rows) {
+          if (err) return reject(err)
+          resolve((rows ?? []).reduce((acc, curr) => {
+            acc[curr.level] = pick(curr, ['alert', 'block'])
+            return acc
+          }, {}))
+        }
+      )
+    })
+  }
+
+  /**
+   * Guard method for validating a given number is a valid admin level
+   * @param {number} level - Value representing the admin level to evaluate
+   * @throws {UserError} If `level` is not a valid `AdminLevel` 
+   */
+  _validateAdminLevel (level) {
     if (!Number.isInteger(level) || !_.inRange(level, MIN_ADMIN_LEVEL, MAX_ADMIN_LEVEL + 1)) throw new UserError(`"${level}" as admin level is invalid`)
   }
 
-  // TODO: write jsdocs for method
-  _validateDailyLimitCategory(category) {
+  /**
+   * Guard method for validating a given string is a valid daily limit category
+   * @param {string} category - Value representing the daily limit category to evaluate
+   * @throws {UserError} If `category` is not a valid `AdminLevelDailyLimitCategory` 
+   */
+  _validateDailyLimitCategory (category) {
     if (!VALID_DAILY_LIMIT_CATEGORIES.some(c => c === category)) throw new UserError(`"${category}" as daily limit category value is invalid`)
   }
 
