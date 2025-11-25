@@ -14,7 +14,7 @@ const migrations = require('./migrations')
 const { cloneDeep, isNil, pick } = require('@bitfinexcom/lib-js-util-base')
 const { VALID_DAILY_LIMIT_CATEGORIES, MIN_ADMIN_LEVEL, DB_TABLES, MAX_ADMIN_LEVEL } = require('./shared')
 
-const FORMS_FIELD = 'forms'
+const SHOULD_STRINGIFY = ['forms', 'dailyLimitConfig']
 
 async function hash (password, salt = '') {
   return new Promise((resolve, reject) => {
@@ -39,6 +39,12 @@ async function verify (password, hash) {
 
 const tableName = DB_TABLES.ADMIN_USERS
 /**
+ * @typedef {('opened'|'displayed')} DailyLimitCategory
+ * @typedef {{
+ *  alert: number
+ *  block: number
+ * }} DailyLimitConfig
+ * @typedef {Record<DailyLimitCategory, DailyLimitConfig>} DailyLimitConfigsByCategory
  * @typedef {{
  *  email: string,
  *  level: number,
@@ -50,7 +56,8 @@ const tableName = DB_TABLES.ADMIN_USERS
  *  passwordResetToken?: string,
  *  passwordResetSentAt?: Date,
  *  company?: string,
- *  forms?: string[]
+ *  forms?: string[],
+ *  dailyLimitConfig?: DailyLimitConfigsByCategory
  * }} BaseAdminT
  * @typedef { BaseAdminT & { password: string }} AddAdminT
  * @typedef { BaseAdminT & {
@@ -76,14 +83,9 @@ const tableName = DB_TABLES.ADMIN_USERS
  *  token: string,
  *  expires_at: Date
  * }} LoginResp
+ * @typedef {DailyLimitConfigsByCategory} AdminLevelDailyLimitConfigsByCategory
  * @typedef {(0|1|2|3|4)} AdminLevel
- * @typedef {('opened'|'displayed')} AdminLevelDailyLimitCategory
- * @typedef {{
- *  alert: number
- *  block: number
- * }} AdminLevelDailyLimitConfig
- * @typedef {Record<AdminLevelDailyLimitCategory, AdminLevelDailyLimitConfig>} AdminLevelDailyLimitConfigsByCategory
- * @typedef {Record<AdminLevel, AdminLevelDailyLimitConfig>} AdminLevelDailyLimitConfigsByAdminLevel
+ * @typedef {Record<AdminLevel, DailyLimitConfig>} AdminLevelDailyLimitConfigsByAdminLevel
  */
 class GoogleAuth extends DbBase {
   constructor (caller, opts = {}, ctx) {
@@ -103,7 +105,8 @@ class GoogleAuth extends DbBase {
         passwordResetSentAt DATETIME,
         company TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-        ${FORMS_FIELD} TEXT
+        forms TEXT
+        dailyLimitConfig TEXT
       )`,
       `CREATE UNIQUE INDEX IF NOT EXISTS uidx_email ON ${tableName}(email ASC)`
     ]
@@ -373,7 +376,8 @@ class GoogleAuth extends DbBase {
       analyticsPrivilege,
       manageAdminsPrivilege,
       fetchMotivationsPrivilege,
-      company
+      company,
+      dailyLimitConfig
     } = user
 
     assert.ok(typeof email === 'string', 'Email is required')
@@ -407,6 +411,8 @@ class GoogleAuth extends DbBase {
       assert.ok(typeof company === 'string', 'company should be a string')
     }
 
+    this._validateDailyLimitConfig(dailyLimitConfig)
+
     const adm = await this._getAdmin(email, false)
     if (adm) throw new UserError('ADMIN_ACCOUNT_EXISTS')
 
@@ -421,7 +427,7 @@ class GoogleAuth extends DbBase {
 
       this.db.run(
         `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${Array(keys.length).fill('?').join(', ')})`,
-        keys.map(key => key === FORMS_FIELD ? JSON.stringify(user[key]) : user[key]),
+        this._convertUserObjectToValuesArray(user),
         function (err) {
           if (err) return reject(err)
 
@@ -454,7 +460,8 @@ class GoogleAuth extends DbBase {
       manageAdminsPrivilege,
       fetchMotivationsPrivilege,
       company,
-      active
+      active,
+      dailyLimitConfig
     } = user
 
     assert.ok(typeof email === 'string', 'Email is required')
@@ -499,6 +506,8 @@ class GoogleAuth extends DbBase {
       assert.ok(typeof active === 'boolean', 'active should be a boolean')
     }
 
+    this._validateDailyLimitConfig(dailyLimitConfig)
+
     const adm = await this._getAdmin(email, !active)
     if (!adm) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
 
@@ -507,7 +516,7 @@ class GoogleAuth extends DbBase {
 
       this.db.run(
         `UPDATE ${tableName} SET ${keys.join(' = ?, ')} = ? WHERE id = ?`,
-        keys.map(key => user[key]).concat(adm.id),
+        this._convertUserObjectToValuesArray(user).concat(adm.id),
         function (err) {
           if (err) return reject(err)
 
@@ -515,6 +524,24 @@ class GoogleAuth extends DbBase {
         }
       )
     })
+  }
+
+  _validateDailyLimitConfig (dailyLimitConfig) {
+    if (dailyLimitConfig) {
+      assert.ok(
+        (
+          typeof dailyLimitConfig === 'object' &&
+          Object.keys(dailyLimitConfig).every(k => VALID_DAILY_LIMIT_CATEGORIES.some(c => c === k)) &&
+          Object.values(dailyLimitConfig).every(v => (_.isInteger(v.alert) && v.alert >= 0 && _.isInteger(v.block) && v.block >= 0))
+        ),
+        'dailyLimitConfig must be a DailyLimitConfigsByCategory object'
+      )
+    }
+  }
+
+  _convertUserObjectToValuesArray (user) {
+    const keys = Object.keys(user)
+    return keys.map(key => SHOULD_STRINGIFY.some(ss => key === ss) ? JSON.stringify(user[key]) : user[key])
   }
 
   async updateAdminPassword (email, newPassword, oldPassword) {
@@ -672,10 +699,12 @@ class GoogleAuth extends DbBase {
   async getAdmin (email, active = true) {
     const admin = await this._getAdmin(email, active)
     const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
-      'analyticsPrivilege', 'manageAdminsPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD]
+      'analyticsPrivilege', 'manageAdminsPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', ...SHOULD_STRINGIFY]
 
-    if (this.conf.useDB && admin && admin[FORMS_FIELD]) {
-      admin[FORMS_FIELD] = JSON.parse(admin[FORMS_FIELD])
+    if (this.conf.useDB && admin) {
+      SHOULD_STRINGIFY.forEach(ss => {
+        if (admin[ss]) admin[ss] = JSON.parse(admin[ss])
+      })
     }
 
     return admin
@@ -765,8 +794,8 @@ class GoogleAuth extends DbBase {
   /**
    * Creates or update a daily limit configuration for a given combination of admin level and daily limit category
    * @param {number} level - The admin level
-   * @param {AdminLevelDailyLimitCategory} category - The daily limit category
-   * @param {AdminLevelDailyLimitConfig} config - The configuration values for the admin level and category daily limit
+   * @param {DailyLimitCategory} category - The daily limit category
+   * @param {DailyLimitConfig} config - The configuration values for the admin level and category daily limit
    * @throws {UserError} In the following cases:
    * - admin level is not integer or it's not between 0 and 4 inclusive
    * - category is neither `opened` nor `displayed`
@@ -825,11 +854,11 @@ class GoogleAuth extends DbBase {
   /**
    * Retrieves a daily limit config associated to an admin level and a daily limit category
    * @param {number} level - The admin level
-   * @param {AdminLevelDailyLimitCategory} category - The daily limit category
+   * @param {DailyLimitCategory} category - The daily limit category
    * @throws {UserError} In the following cases:
    * - admin level is not integer or it's not between 0 and 4 inclusive
    * - category is neither `opened` nor `displayed`
-   * @returns {Promise<AdminLevelDailyLimitConfig>} Resolves to a `AdminLevelDailyLimitConfig` object if there is a daily limit associated to the provided admin level and category. Otherwise, triggers a rejection.
+   * @returns {Promise<DailyLimitConfig>} Resolves to a `DailyLimitConfig` object if there is a daily limit associated to the provided admin level and category. Otherwise, triggers a rejection.
    */
   async getAdminLevelDailyLimit (level, category) {
     this._validateAdminLevel(level)
@@ -874,7 +903,7 @@ class GoogleAuth extends DbBase {
 
   /**
    * Retrieves all daily limit records associated to a given category
-   * @param {AdminLevelDailyLimitCategory} category - The daily limit category
+   * @param {DailyLimitCategory} category - The daily limit category
    * @throws {UserError} In the following cases:
    * - category is neither `opened` nor `displayed`
    * @returns {Promise<AdminLevelDailyLimitConfigsByAdminLevel>} Resolves to a `AdminLevelDailyLimitConfigsByAdminLevel` object. If an error is detected, triggers an exception.
@@ -900,7 +929,7 @@ class GoogleAuth extends DbBase {
   /**
    * Guard method for validating a given number is a valid admin level
    * @param {number} level - Value representing the admin level to evaluate
-   * @throws {UserError} If `level` is not a valid `AdminLevel` 
+   * @throws {UserError} If `level` is not a valid `AdminLevel`
    */
   _validateAdminLevel (level) {
     if (!Number.isInteger(level) || !_.inRange(level, MIN_ADMIN_LEVEL, MAX_ADMIN_LEVEL + 1)) throw new UserError(`"${level}" as admin level is invalid`)
@@ -909,13 +938,11 @@ class GoogleAuth extends DbBase {
   /**
    * Guard method for validating a given string is a valid daily limit category
    * @param {string} category - Value representing the daily limit category to evaluate
-   * @throws {UserError} If `category` is not a valid `AdminLevelDailyLimitCategory` 
+   * @throws {UserError} If `category` is not a valid `DailyLimitCategory`
    */
   _validateDailyLimitCategory (category) {
     if (!VALID_DAILY_LIMIT_CATEGORIES.some(c => c === category)) throw new UserError(`"${category}" as daily limit category value is invalid`)
   }
-
-  // TODO: implement code related to managing daily limit config of admin users, most probably in already existing methods (create as well specific methods for those operations?)
 }
 
 module.exports = GoogleAuth
