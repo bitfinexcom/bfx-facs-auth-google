@@ -953,6 +953,9 @@ class GoogleAuth extends DbBase {
     const admin = await this.getAdmin(adminUserEmail)
     return (admin || {}).dailyLimitConfig || null
   }
+
+  // TODO: implement method for nullifying back dailyLimitConfig for admin user?
+  // TODO: implement method for settling only dailyLimitConfig for a given user or we should be okay with handling that with addAdmin and updateAdmin?
 }
 
 module.exports = GoogleAuth
