@@ -37,6 +37,8 @@ async function verify (password, hash) {
   })
 }
 
+const tableName = DB_TABLES.ADMIN_USERS
+
 /**
  * @typedef {{
  *  email: string,
@@ -88,7 +90,7 @@ class GoogleAuth extends DbBase {
   constructor (caller, opts = {}, ctx) {
     opts.name = 'auth-google'
     opts.runSqlAtStart = [
-      `CREATE TABLE IF NOT EXISTS ${DB_TABLES.ADMIN_USERS} (
+      `CREATE TABLE IF NOT EXISTS ${tableName} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT UNIQUE NOT NULL,
         password TEXT,
@@ -104,7 +106,7 @@ class GoogleAuth extends DbBase {
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
         ${FORMS_FIELD} TEXT
       )`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS uidx_email ON ${DB_TABLES.ADMIN_USERS}(email ASC)`
+      `CREATE UNIQUE INDEX IF NOT EXISTS uidx_email ON ${tableName}(email ASC)`
     ]
     super(caller, opts, ctx)
 
@@ -419,7 +421,7 @@ class GoogleAuth extends DbBase {
       const keys = Object.keys(user)
 
       this.db.run(
-        `INSERT INTO ${DB_TABLES.ADMIN_USERS} (${keys.join(', ')}) VALUES (${Array(keys.length).fill('?').join(', ')})`,
+        `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${Array(keys.length).fill('?').join(', ')})`,
         keys.map(key => key === FORMS_FIELD ? JSON.stringify(user[key]) : user[key]),
         function (err) {
           if (err) return reject(err)
@@ -505,7 +507,7 @@ class GoogleAuth extends DbBase {
       const keys = Object.keys(user)
 
       this.db.run(
-        `UPDATE ${DB_TABLES.ADMIN_USERS} SET ${keys.join(' = ?, ')} = ? WHERE id = ?`,
+        `UPDATE ${tableName} SET ${keys.join(' = ?, ')} = ? WHERE id = ?`,
         keys.map(key => user[key]).concat(adm.id),
         function (err) {
           if (err) return reject(err)
@@ -534,7 +536,7 @@ class GoogleAuth extends DbBase {
 
     return new Promise((resolve, reject) => {
       this.db.run(
-        `UPDATE ${DB_TABLES.ADMIN_USERS} SET password = ? WHERE id = ?`,
+        `UPDATE ${tableName} SET password = ? WHERE id = ?`,
         [password, adm.id],
         function (err) {
           if (err) return reject(err)
@@ -562,7 +564,7 @@ class GoogleAuth extends DbBase {
 
     return new Promise((resolve, reject) => {
       this.db.run(
-        `UPDATE ${DB_TABLES.ADMIN_USERS} SET password = ? WHERE id = ?`,
+        `UPDATE ${tableName} SET password = ? WHERE id = ?`,
         [password, admin.id],
         function (err) {
           if (err) return reject(err)
@@ -578,7 +580,7 @@ class GoogleAuth extends DbBase {
 
     return new Promise((resolve, reject) => {
       this.db.serialize(() => {
-        const statement = this.db.prepare(`DELETE FROM ${DB_TABLES.ADMIN_USERS} WHERE id = ? OR LOWER(email) = ?`)
+        const statement = this.db.prepare(`DELETE FROM ${tableName} WHERE id = ? OR LOWER(email) = ?`)
         statement.run([idOrEmail, `${idOrEmail}`.toLowerCase()])
         statement.finalize(err => {
           if (err) return reject(err)
@@ -656,7 +658,7 @@ class GoogleAuth extends DbBase {
 
   _checkIfAdminDbHasData () {
     return new Promise((resolve, reject) => {
-      const query = `SELECT EXISTS(SELECT 1 FROM ${DB_TABLES.ADMIN_USERS}) as exist`
+      const query = `SELECT EXISTS(SELECT 1 FROM ${tableName}) as exist`
       this.db.get(query, (err, row) => {
         if (err) return reject(err)
         resolve(row?.exist)
@@ -693,8 +695,8 @@ class GoogleAuth extends DbBase {
   async _getAdminFromDB (email, active) {
     return new Promise((resolve, reject) => {
       const query = active
-        ? `SELECT * FROM ${DB_TABLES.ADMIN_USERS} WHERE LOWER(email) = ? AND active = 1`
-        : `SELECT * FROM ${DB_TABLES.ADMIN_USERS} WHERE LOWER(email) = ?`
+        ? `SELECT * FROM ${tableName} WHERE LOWER(email) = ? AND active = 1`
+        : `SELECT * FROM ${tableName} WHERE LOWER(email) = ?`
 
       this.db.get(query, [email.toLowerCase()], (err, row) => {
         if (err) return reject(err)
@@ -732,8 +734,8 @@ class GoogleAuth extends DbBase {
       }, '')
 
       const query = active || company
-        ? `SELECT LOWER(email) AS email FROM ${DB_TABLES.ADMIN_USERS} WHERE ${whereClause} ORDER BY email ASC`
-        : `SELECT LOWER(email) AS email FROM ${DB_TABLES.ADMIN_USERS} ORDER BY email ASC`
+        ? `SELECT LOWER(email) AS email FROM ${tableName} WHERE ${whereClause} ORDER BY email ASC`
+        : `SELECT LOWER(email) AS email FROM ${tableName} ORDER BY email ASC`
 
       this.db.all(query, [], (err, rows) => {
         if (err) return reject(err)
