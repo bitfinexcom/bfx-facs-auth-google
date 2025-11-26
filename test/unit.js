@@ -366,14 +366,18 @@ describe('index', () => {
         }
       }
 
+      const assertDailyLimitConfig = async (expected) => {
+        await new Promise((resolve) => authGoogle.db.get('SELECT * FROM admin_users WHERE email=?', [testAdminEmail], (err, row) => {
+          if (err) throw err
+          assert.equal(row.dailyLimitConfig, expected)
+          resolve()
+        }))
+      }
+
       describe('creating admin with dailyLimitConfig', () => {
         it('should create admin user with dailyLimitConfig', async () => {
           await authGoogle.addAdmin(adminWithDailyLimitConfig)
-          await new Promise((resolve) => authGoogle.db.get('SELECT * FROM admin_users WHERE email=?', [testAdminEmail], (err, row) => {
-            if (err) throw err
-            assert.equal(row.dailyLimitConfig, JSON.stringify(dailyLimitConfig))
-            resolve()
-          }))
+          await assertDailyLimitConfig(JSON.stringify(dailyLimitConfig))
         })
 
         it('should throw error when creating admin user with dailyConfig not being an object', async () => {
@@ -450,17 +454,17 @@ describe('index', () => {
       describe('updating admin with dailyLimitConfig', () => {
         it('should update admin user with dailyLimitConfig', async () => {
           await authGoogle.addAdmin(omit(adminWithDailyLimitConfig, ['dailyLimitConfig']))
-          await new Promise((resolve) => authGoogle.db.get('SELECT * FROM admin_users WHERE email=?', [testAdminEmail], (err, row) => {
-            if (err) throw err
-            assert.equal(row.dailyLimitConfig, null)
-            resolve()
-          }))
+          await assertDailyLimitConfig(null)
           await authGoogle.updateAdmin(testAdminEmail, { dailyLimitConfig })
-          await new Promise((resolve) => authGoogle.db.get('SELECT * FROM admin_users WHERE email=?', [testAdminEmail], (err, row) => {
-            if (err) throw err
-            assert.equal(row.dailyLimitConfig, JSON.stringify(dailyLimitConfig))
-            resolve()
-          }))
+          await assertDailyLimitConfig(JSON.stringify(dailyLimitConfig))
+        })
+
+        it('should nullify admin user daily limit config', async () => {
+          await authGoogle.addAdmin(adminWithDailyLimitConfig)
+          await assertDailyLimitConfig(JSON.stringify(dailyLimitConfig))
+          const result = await authGoogle.removeAdminUserDailyLimitConfig(testAdminEmail)
+          assert.ok(result)
+          await assertDailyLimitConfig(null)
         })
 
         it('should throw error when trying to update admin user with dailyConfig not being an object', async () => {
@@ -536,22 +540,14 @@ describe('index', () => {
 
         it('should retrieve the daily limit config of a given admin user', async () => {
           await authGoogle.addAdmin(adminWithDailyLimitConfig)
-          await new Promise((resolve) => authGoogle.db.get('SELECT * FROM admin_users WHERE email=?', [testAdminEmail], (err, row) => {
-            if (err) throw err
-            assert.equal(row.dailyLimitConfig, JSON.stringify(dailyLimitConfig))
-            resolve()
-          }))
+          await assertDailyLimitConfig(JSON.stringify(dailyLimitConfig))
           const retrievedDailyLimitConfig = await authGoogle.getAdminUserDailyLimitConfig(adminWithDailyLimitConfig.email)
           assert.deepStrictEqual(retrievedDailyLimitConfig, retrievedDailyLimitConfig)
         })
 
         it('should retrieve null when no daily limit has been set for the admin', async () => {
           await authGoogle.addAdmin(omit(adminWithDailyLimitConfig, ['dailyLimitConfig']))
-          await new Promise((resolve) => authGoogle.db.get('SELECT * FROM admin_users WHERE email=?', [testAdminEmail], (err, row) => {
-            if (err) throw err
-            assert.equal(row.dailyLimitConfig, null)
-            resolve()
-          }))
+          await assertDailyLimitConfig(null)
           const retrievedDailyLimitConfig = await authGoogle.getAdminUserDailyLimitConfig(adminWithDailyLimitConfig.email)
           assert.deepStrictEqual(retrievedDailyLimitConfig, null)
         })

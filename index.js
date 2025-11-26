@@ -508,8 +508,7 @@ class GoogleAuth extends DbBase {
 
     this._validateDailyLimitConfig(dailyLimitConfig)
 
-    const adm = await this._getAdmin(email, !active)
-    if (!adm) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
+    const adm = await this._getAdminOrThrowError(email, !active)
 
     return new Promise((resolve, reject) => {
       const keys = Object.keys(user)
@@ -551,8 +550,7 @@ class GoogleAuth extends DbBase {
     assert.ok(typeof newPassword === 'string', 'New Password is required')
     assert.ok(typeof oldPassword === 'string', 'Old Password is required')
 
-    const adm = await this._getAdmin(email)
-    if (!adm) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
+    const adm = await this._getAdminOrThrowError(email)
 
     if (!(await verify(oldPassword, adm.password))) {
       throw new UserError('INVALID_PASSWORD')
@@ -703,13 +701,26 @@ class GoogleAuth extends DbBase {
 
     if (this.conf.useDB && admin) {
       SHOULD_STRINGIFY.forEach(ss => {
-        if (admin[ss]) admin[ss] = JSON.parse(admin[ss])
+        if (admin[ss]) admin[ss] = admin[ss] ? JSON.parse(admin[ss]) : null
       })
     }
 
     return admin
       ? _.pick(admin, displayKeys)
       : admin
+  }
+
+  /**
+   * Fetchs admin given an email address.
+   * @param {string} email - Email address of the admin to be retrieved.
+   * @param {boolean} [active = true] -  Flag to be used in case we want to fetch the admin regardless of being active or not.
+   * @throws {UserError} If no admin is found, this exception is thrown.
+   * @returns 
+   */
+  async _getAdminOrThrowError (email, active = true) {
+    const admin = await this._getAdmin(email, active)
+    if (!admin) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
+    return admin
   }
 
   async _getAdmin (email, active = true) {
@@ -788,8 +799,6 @@ class GoogleAuth extends DbBase {
     const admin = await this._getAdmin(email)
     return !!admin?.password
   }
-
-  // TODO: move daily limits logic into its own module and invoke it it here? For avoiding this module to keep growing.
 
   /**
    * Creates or update a daily limit configuration for a given combination of admin level and daily limit category
@@ -954,7 +963,20 @@ class GoogleAuth extends DbBase {
     return (admin || {}).dailyLimitConfig || null
   }
 
-  // TODO: implement method for nullifying back dailyLimitConfig for admin user?
+  async removeAdminUserDailyLimitConfig (adminUserEmail) {
+    const adm = await this._getAdminOrThrowError(adminUserEmail)
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        `UPDATE ${tableName} SET dailyLimitConfig = ? WHERE id = ?`,
+        [null, adm.id],
+        function (err) {
+          if (err) return reject(err)
+          resolve(true)
+        }
+      )
+    })
+  }
+
   // TODO: implement method for settling only dailyLimitConfig for a given user or we should be okay with handling that with addAdmin and updateAdmin?
 }
 
