@@ -816,13 +816,7 @@ class GoogleAuth extends DbBase {
     this._validateAdminLevel(level)
     this._validateDailyLimitCategory(category)
 
-    const existingLevelDailyLimit = await new Promise((resolve, reject) => {
-      const query = `SELECT * FROM ${DB_TABLES.LEVEL_DAILY_LIMITS} WHERE level = ? AND category = ?`
-      this.db.get(query, [level, category], (err, row) => {
-        if (err) return reject(err)
-        resolve(row)
-      })
-    })
+    const existingLevelDailyLimit = await this.getAdminLevelDailyLimit(level, category)
 
     const { alert, block } = config ?? {}
 
