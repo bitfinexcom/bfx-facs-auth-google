@@ -144,19 +144,30 @@ describe('index', () => {
   })
 
   describe('daily limits', () => {
-    describe('for admin levels', () => {
-      const level = 0
-      const category = VALID_DAILY_LIMIT_CATEGORIES[0]
+    const level = 0
+    const category = VALID_DAILY_LIMIT_CATEGORIES[0]
 
-      const assertUserError = async (fn, msg) => {
-        try {
-          await fn()
-          throw new Error('SHOULD_NOT_REACH_HERE')
-        } catch (e) {
-          assert.ok(e instanceof UserError)
-          assert.strictEqual(e.message, msg)
-        }
+    const assertUserError = async (fn, msg) => {
+      try {
+        await fn()
+        throw new Error('SHOULD_NOT_REACH_HERE')
+      } catch (e) {
+        assert.ok(e instanceof UserError)
+        assert.strictEqual(e.message, msg)
       }
+    }
+
+    const assertAssertionError = async (fn, msg) => {
+      try {
+        await fn()
+        throw new Error('SHOULD_NOT_REACH_HERE')
+      } catch (e) {
+        assert.ok(e instanceof assert.AssertionError)
+        assert.strictEqual(e.message, msg)
+      }
+    }
+
+    describe('for admin levels', () => {
 
       describe('creating/updatig daily limits for an admin level', () => {
         it('should create succesfully an admin level daily limit', async () => {
@@ -350,21 +361,11 @@ describe('index', () => {
       const adminWithDailyLimitConfig = {
         email: testAdminEmail,
         password: 'test123',
-        level: 0,
+        level,
         dailyLimitConfig
       }
 
       const dailyLimitConfigErrMsg = 'dailyLimitConfig must be a DailyLimitConfigsByCategory object'
-
-      const assertAssertionError = async (fn, msg) => {
-        try {
-          await fn()
-          throw new Error('SHOULD_NOT_REACH_HERE')
-        } catch (e) {
-          assert.ok(e instanceof assert.AssertionError)
-          assert.strictEqual(e.message, msg)
-        }
-      }
 
       const assertDailyLimitConfig = async (expected) => {
         await new Promise((resolve) => authGoogle.db.get('SELECT * FROM admin_users WHERE email=?', [testAdminEmail], (err, row) => {
@@ -542,14 +543,46 @@ describe('index', () => {
           await authGoogle.addAdmin(adminWithDailyLimitConfig)
           await assertDailyLimitConfig(JSON.stringify(dailyLimitConfig))
           const retrievedDailyLimitConfig = await authGoogle.getAdminUserDailyLimitConfig(adminWithDailyLimitConfig.email)
-          assert.deepStrictEqual(retrievedDailyLimitConfig, retrievedDailyLimitConfig)
+          assert.deepStrictEqual(retrievedDailyLimitConfig, dailyLimitConfig)
         })
 
-        it('should retrieve null when no daily limit has been set for the admin', async () => {
+        it('should retrieve the daily limit config of a given admin user when this does not have it defined but its level does', async () => {
+          const levelDailyLimitCreationResult = await authGoogle.setAdminLevelDailyLimit(level, category, { alert: 0, block: 0 })
+          assert.ok(levelDailyLimitCreationResult)
+          await authGoogle.addAdmin(omit(adminWithDailyLimitConfig, ['dailyLimitConfig']))
+          await assertDailyLimitConfig(null)
+          const retrievedDailyLimitConfig = await authGoogle.getAdminUserDailyLimitConfig(adminWithDailyLimitConfig.email)
+          assert.deepStrictEqual(retrievedDailyLimitConfig, { [category]: { alert: 0, block: 0 } })
+        })
+
+        it('should retrieve null when no daily limit has been set for the admin and its level either', async () => {
           await authGoogle.addAdmin(omit(adminWithDailyLimitConfig, ['dailyLimitConfig']))
           await assertDailyLimitConfig(null)
           const retrievedDailyLimitConfig = await authGoogle.getAdminUserDailyLimitConfig(adminWithDailyLimitConfig.email)
           assert.deepStrictEqual(retrievedDailyLimitConfig, null)
+        })
+
+        it('should throw error when trying to retrieve a daily limit config for a non existing admin', async () => {
+          assertUserError(
+            async () => authGoogle.getAdminUserDailyLimitConfig('non-existing-address@bitfinex.com'),
+            'ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE'
+          )
+        })
+      })
+
+      describe('removing admin daily limit config', () => {
+        it('should remove daily limit config associated to an admin', async () => {
+          await authGoogle.addAdmin(adminWithDailyLimitConfig)
+          await assertDailyLimitConfig(JSON.stringify(dailyLimitConfig))
+          await authGoogle.removeAdminUserDailyLimitConfig(adminWithDailyLimitConfig.email)
+          await assertDailyLimitConfig(null)
+        })
+
+        it('should throw error when trying to remove a daily limit config for a non existing admin', async () => {
+          assertUserError(
+            async () => authGoogle.removeAdminUserDailyLimitConfig('non-existing-address@bitfinex.com'),
+            'ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE'
+          )
         })
       })
     })

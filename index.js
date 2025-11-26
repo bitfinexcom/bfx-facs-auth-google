@@ -884,7 +884,7 @@ class GoogleAuth extends DbBase {
    * @param {number} level - The admin level
    * @throws {UserError} In the following cases:
    * - admin level is not integer or it's not between 0 and 4 inclusive
-   * @returns {Promise<AdminLevelDailyLimitConfigsByCategory>} Resolves to a `AdminLevelDailyLimitConfigsByCategory` object. If an error is detected, triggers an exception.
+   * @returns {Promise<AdminLevelDailyLimitConfigsByCategory | null>} Resolves to a `AdminLevelDailyLimitConfigsByCategory` object. If an error is detected, triggers an exception.
    */
   async getDailyLimitsByAdminLevel (level) {
     this._validateAdminLevel(level)
@@ -895,7 +895,8 @@ class GoogleAuth extends DbBase {
         [level],
         function (err, rows) {
           if (err) return reject(err)
-          resolve((rows ?? []).reduce((acc, curr) => {
+          if (!rows?.length) resolve(null)
+          resolve(rows.reduce((acc, curr) => {
             acc[curr.category] = pick(curr, ['alert', 'block'])
             return acc
           }, {}))
@@ -950,13 +951,25 @@ class GoogleAuth extends DbBase {
   /**
    * Retrieves the daily limit config associated to an admin
    * @param {string} adminUserEmail - The email address associated to the admin.
-   * @returns {DailyLimitConfig|null} Returns either the fully fleshed daily limit config object associated to the admin, or `null` in case it hasn't been set yet.
+   * @throws {UserError} If no admin associated to the provided email address is found, this exception is thrown.
+   * @returns {DailyLimitConfigsByCategory|null} Returns the fully fleshed daily limit config object associated to the admin.
+   * If it hasn't been set yet, then returns the daily limit config object associated to the admin level. If this does not exist
+   * either then return `null`.
    */
   async getAdminUserDailyLimitConfig (adminUserEmail) {
     const admin = await this.getAdmin(adminUserEmail)
-    return (admin || {}).dailyLimitConfig || null
+    if (!admin) return null
+    const val = admin.dailyLimitConfig
+    if (val) return val
+    return this.getDailyLimitsByAdminLevel(admin.level)
   }
 
+  /**
+   * Removes the daily limit config associated to an admin.
+   * @param {string} adminUserEmail - The email address associated to the admin. 
+   * @throws {UserError} If no admin associated to the provided email address is found, this exception is thrown.
+   * @returns {Promise<boolean>} Resolves to `true` if daily limit configuration is removed successfully. Otherwise, triggers a rejection.
+   */
   async removeAdminUserDailyLimitConfig (adminUserEmail) {
     const adm = await this._getAdminOrThrowError(adminUserEmail)
     return new Promise((resolve, reject) => {
