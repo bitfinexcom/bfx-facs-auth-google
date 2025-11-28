@@ -525,8 +525,13 @@ class GoogleAuth extends DbBase {
     })
   }
 
+  /**
+   * Evaluates if a given value is a DailyLimitConfig object
+   * @param {DailyLimitConfig | undefined | null} dailyLimitConfig - Value to check if, in case is not `nil`, has the correc structure for being a DailyLimitConfig
+   * @throws {assert.AssertionError} If the value to be evaluated is not a DailyLimitConfig object
+   */
   _validateDailyLimitConfig (dailyLimitConfig) {
-    if (dailyLimitConfig) {
+    if (!isNil(dailyLimitConfig)) {
       assert.ok(
         (
           typeof dailyLimitConfig === 'object' &&
@@ -538,6 +543,11 @@ class GoogleAuth extends DbBase {
     }
   }
 
+  /**
+   * Serializes user object values into a one level array of primitive values
+   * @param {BaseAdminT} user - User object to be serialized in an array of primitive values so they can be used in SQL insert/update operations 
+   * @returns {Array<string|number|boolean|undefined|Date>} Serialized values
+   */
   _convertUserObjectToValuesArray (user) {
     const keys = Object.keys(user)
     return keys.map(key => SHOULD_STRINGIFY.some(ss => key === ss) ? JSON.stringify(user[key]) : user[key])
@@ -715,7 +725,7 @@ class GoogleAuth extends DbBase {
    * @param {string} email - Email address of the admin to be retrieved.
    * @param {boolean} [active = true] -  Flag to be used in case we want to fetch the admin regardless of being active or not.
    * @throws {UserError} If no admin is found, this exception is thrown.
-   * @returns 
+   * @returns {BaseAdminT} The admin user object, if no error has been thrown.
    */
   async _getAdminOrThrowError (email, active = true) {
     const admin = await this._getAdmin(email, active)
