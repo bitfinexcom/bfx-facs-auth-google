@@ -168,7 +168,6 @@ describe('index', () => {
     }
 
     describe('for admin levels', () => {
-
       describe('creating/updatig daily limits for an admin level', () => {
         it('should create succesfully an admin level daily limit', async () => {
           const levelDailyLimit = await authGoogle.setAdminLevelDailyLimit(level, category, { alert: 0, block: 0 })
@@ -195,13 +194,10 @@ describe('index', () => {
 
         it('should throw error when trying to set an admin level daily limit with a numeric admin level beyond the valid range (between 0 and 4, inclusive)', async () => {
           const invalidAdminLevel = -1
-          try {
-            await authGoogle.setAdminLevelDailyLimit(invalidAdminLevel, category, { alert: 0, block: 0 })
-            throw new Error('SHOULD_NOT_REACH_HERE')
-          } catch (e) {
-            assert.ok(e instanceof UserError)
-            assert.strictEqual(e.message, `"${invalidAdminLevel}" as admin level is invalid`)
-          }
+          await assertUserError(
+            async () => authGoogle.setAdminLevelDailyLimit(invalidAdminLevel, category, { alert: 0, block: 0 }),
+            `"${invalidAdminLevel}" as admin level is invalid`
+          )
         })
 
         it('should throw error when trying to set an admin level daily limit with an invalid category', async () => {
@@ -347,6 +343,38 @@ describe('index', () => {
           await assertUserError(
             async () => authGoogle.getDailyLimitsByCategory(invalidCategory),
             `"${invalidCategory}" as daily limit category value is invalid`
+          )
+        })
+      })
+
+      describe('removing daily limits', () => {
+        it('should remove successfully all daily limits associated to an admin level', async () => {
+          const level0 = 0
+          const level1 = 1
+          const category0 = VALID_DAILY_LIMIT_CATEGORIES[0]
+          const category1 = VALID_DAILY_LIMIT_CATEGORIES[1]
+          await authGoogle.setAdminLevelDailyLimit(level0, category0, { alert: 0, block: 0 })
+          await authGoogle.setAdminLevelDailyLimit(level0, category1, { alert: 0, block: 0 })
+          await authGoogle.setAdminLevelDailyLimit(level1, category0, { alert: 0, block: 0 })
+          await authGoogle.removeAdminLevelDailyLimits(level0)
+          assert.strictEqual(await authGoogle.getAdminLevelDailyLimit(level0, category0), null)
+          assert.strictEqual(await authGoogle.getAdminLevelDailyLimit(level0, category1), null)
+          assert.deepStrictEqual(await authGoogle.getAdminLevelDailyLimit(level1, category0), { alert: 0, block: 0 })
+        })
+
+        it('should throw error when trying to remove admin level daily limits with non numeric value for admin level', async () => {
+          const invalidAdminLevel = 'non numeric value'
+          await assertUserError(
+            async () => authGoogle.removeAdminLevelDailyLimits(invalidAdminLevel),
+            `"${invalidAdminLevel}" as admin level is invalid`
+          )
+        })
+
+        it('should throw error when trying to remove admin level daily limits with a numeric admin level beyond the valid range (between 0 and 4, inclusive)', async () => {
+          const invalidAdminLevel = -1
+          await assertUserError(
+            async () => authGoogle.removeAdminLevelDailyLimits(invalidAdminLevel),
+            `"${invalidAdminLevel}" as admin level is invalid`
           )
         })
       })

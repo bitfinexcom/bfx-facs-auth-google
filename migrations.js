@@ -72,12 +72,12 @@ const migrations = [
     })
   },
   (_this, cb) => {
-    _this.db.all(`SELECT name FROM sqlite_master WHERE type='table' AND name='${DB_TABLES.LEVEL_DAILY_LIMITS}' LIMIT 1`, [], (err, rows) => {
+    _this.db.all(`SELECT name FROM sqlite_master WHERE type='table' AND name='${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS}' LIMIT 1`, [], (err, rows) => {
       if (err) return cb(err)
       if (rows?.length) return cb()
 
       _this.db.run(`
-        CREATE TABLE IF NOT EXISTS ${DB_TABLES.LEVEL_DAILY_LIMITS} (
+        CREATE TABLE IF NOT EXISTS ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} (
           level INTEGER NOT NULL CHECK (level BETWEEN ${MIN_ADMIN_LEVEL} AND ${MAX_ADMIN_LEVEL}),
           category TEXT NOT NULL CHECK (category IN (${VALID_DAILY_LIMIT_CATEGORIES.map(s => `'${s}'`).join(', ')})),
           alert INTEGER NOT NULL CHECK (alert >= 0),

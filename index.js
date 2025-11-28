@@ -838,7 +838,7 @@ class GoogleAuth extends DbBase {
 
       return new Promise((resolve, reject) => {
         this.db.run(
-          `UPDATE ${DB_TABLES.LEVEL_DAILY_LIMITS} SET ${fields.join(' = ?, ')} = ? WHERE level = ? AND category = ?`,
+          `UPDATE ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} SET ${fields.join(' = ?, ')} = ? WHERE level = ? AND category = ?`,
           Object.values(valuesToUpdate).concat([level, category]),
           cb(resolve, reject)
         )
@@ -846,12 +846,31 @@ class GoogleAuth extends DbBase {
     } else {
       return new Promise((resolve, reject) => {
         this.db.run(
-          `INSERT INTO ${DB_TABLES.LEVEL_DAILY_LIMITS} (level, category, alert, block) VALUES (?, ?, ?, ?)`,
+          `INSERT INTO ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} (level, category, alert, block) VALUES (?, ?, ?, ?)`,
           [level, category, alert, block],
           cb(resolve, reject)
         )
       })
     }
+  }
+
+  /**
+   * Remove all daily limits records associated to an admin level
+   * @param {AdminLevel} level - The admin level value that we want to remove all its daily limit records from
+   * @returns {Promise<boolean>} Resolves to `true` in case we remove all the records successfully. Throws an error in case something goes wrong.
+   */
+  async removeAdminLevelDailyLimits (level) {
+    this._validateAdminLevel(level)
+    return new Promise((resolve, reject) => {
+      this.db.serialize(() => {
+        const statement = this.db.prepare(`DELETE FROM ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} WHERE level = ?`)
+        statement.run([level])
+        statement.finalize(err => {
+          if (err) return reject(err)
+          resolve(true)
+        })
+      })
+    })
   }
 
   /**
@@ -861,7 +880,7 @@ class GoogleAuth extends DbBase {
    * @throws {UserError} In the following cases:
    * - admin level is not integer or it's not between 0 and 4 inclusive
    * - category is neither `opened` nor `displayed`
-   * @returns {Promise<DailyLimitConfig>} Resolves to a `DailyLimitConfig` object if there is a daily limit associated to the provided admin level and category. Otherwise, triggers a rejection.
+   * @returns {Promise<DailyLimitConfig | null>} Resolves to a `DailyLimitConfig` object if there is a daily limit associated to the provided admin level and category, or null if there is nothing saved yet in the database. Otherwise, triggers a rejection.
    */
   async getAdminLevelDailyLimit (level, category) {
     this._validateAdminLevel(level)
@@ -869,11 +888,11 @@ class GoogleAuth extends DbBase {
 
     return new Promise((resolve, reject) => {
       this.db.get(
-        `SELECT alert, block FROM ${DB_TABLES.LEVEL_DAILY_LIMITS} WHERE level = ? AND category = ? LIMIT 1`,
+        `SELECT alert, block FROM ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} WHERE level = ? AND category = ? LIMIT 1`,
         [level, category],
         function (err, row) {
           if (err) return reject(err)
-          resolve(row)
+          resolve(row || null)
         }
       )
     })
@@ -891,7 +910,7 @@ class GoogleAuth extends DbBase {
 
     return new Promise((resolve, reject) => {
       this.db.all(
-        `SELECT category, alert, block FROM ${DB_TABLES.LEVEL_DAILY_LIMITS} WHERE level = ?`,
+        `SELECT category, alert, block FROM ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} WHERE level = ?`,
         [level],
         function (err, rows) {
           if (err) return reject(err)
@@ -917,7 +936,7 @@ class GoogleAuth extends DbBase {
 
     return new Promise((resolve, reject) => {
       this.db.all(
-        `SELECT level, alert, block FROM ${DB_TABLES.LEVEL_DAILY_LIMITS} WHERE category = ?`,
+        `SELECT level, alert, block FROM ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} WHERE category = ?`,
         [category],
         function (err, rows) {
           if (err) return reject(err)
@@ -983,8 +1002,6 @@ class GoogleAuth extends DbBase {
       )
     })
   }
-
-  // TODO: implement method for settling only dailyLimitConfig for a given user or we should be okay with handling that with addAdmin and updateAdmin?
 }
 
 module.exports = GoogleAuth
