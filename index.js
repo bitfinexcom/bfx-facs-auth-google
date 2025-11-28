@@ -867,6 +867,8 @@ class GoogleAuth extends DbBase {
   /**
    * Remove all daily limits records associated to an admin level
    * @param {AdminLevel} level - The admin level value that we want to remove all its daily limit records from
+   * @throws {UserError} In the following cases:
+   * - admin level is not integer or it's not between 0 and 4 inclusive
    * @returns {Promise<boolean>} Resolves to `true` in case we remove all the records successfully. Throws an error in case something goes wrong.
    */
   async removeAdminLevelDailyLimits (level) {
