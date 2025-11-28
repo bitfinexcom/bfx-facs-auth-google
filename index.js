@@ -711,7 +711,7 @@ class GoogleAuth extends DbBase {
   }
 
   /**
-   * Fetchs admin given an email address.
+   * Retrieves admin given an email address.
    * @param {string} email - Email address of the admin to be retrieved.
    * @param {boolean} [active = true] -  Flag to be used in case we want to fetch the admin regardless of being active or not.
    * @throws {UserError} If no admin is found, this exception is thrown.
