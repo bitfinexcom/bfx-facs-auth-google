@@ -625,7 +625,7 @@ class GoogleAuth extends DbBase {
 
   /**
    * Serializes user object values into a one level array of primitive values
-   * @param {BaseAdminT} user - User object to be serialized in an array of primitive values so they can be used in SQL insert/update operations 
+   * @param {BaseAdminT} user - User object to be serialized in an array of primitive values so they can be used in SQL insert/update operations
    * @returns {Array<string|number|boolean|undefined|Date>} Serialized values
    */
   _convertUserObjectToValuesArray (user) {
@@ -845,7 +845,7 @@ class GoogleAuth extends DbBase {
           const dailyLimits = rows || []
 
           if (dailyLimits.length === 0) resolve(null)
-      
+
           resolve(dailyLimits.reduce((acc, curr) => {
             acc[curr.category] = pick(curr, ['alert', 'block'])
             return acc
@@ -1129,7 +1129,7 @@ class GoogleAuth extends DbBase {
 
   /**
    * Removes the daily limit config associated to an admin.
-   * @param {string} adminUserEmail - The email address associated to the admin. 
+   * @param {string} adminUserEmail - The email address associated to the admin.
    * @throws {UserError} If no admin associated to the provided email address is found, this exception is thrown.
    * @returns {Promise<boolean>} Resolves to `true` if daily limit configuration is removed successfully. Otherwise, triggers a rejection.
    */

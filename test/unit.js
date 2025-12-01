@@ -398,8 +398,8 @@ describe('index', () => {
       const dailyLimitConfigErrMsg = 'dailyLimitConfig must be a DailyLimitConfigsByCategory object'
 
       const assertDailyLimitConfig = async (expectedDailyLimitConfig) => {
-         const actualDailyLimitConfig = await authGoogle.getAdminUserDailyLimitConfig(testAdminEmail)
-         assert.deepStrictEqual(actualDailyLimitConfig, expectedDailyLimitConfig)
+        const actualDailyLimitConfig = await authGoogle.getAdminUserDailyLimitConfig(testAdminEmail)
+        assert.deepStrictEqual(actualDailyLimitConfig, expectedDailyLimitConfig)
       }
 
       describe('creating admin with dailyLimitConfig', () => {
