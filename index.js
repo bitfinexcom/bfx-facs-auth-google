@@ -14,7 +14,7 @@ const migrations = require('./migrations')
 const { cloneDeep, isNil, pick } = require('@bitfinexcom/lib-js-util-base')
 const { VALID_DAILY_LIMIT_CATEGORIES, MIN_ADMIN_LEVEL, DB_TABLES, MAX_ADMIN_LEVEL } = require('./shared')
 
-const SHOULD_STRINGIFY = ['forms', 'dailyLimitConfig']
+const SHOULD_STRINGIFY = ['forms']
 
 async function hash (password, salt = '') {
   return new Promise((resolve, reject) => {
@@ -106,7 +106,6 @@ class GoogleAuth extends DbBase {
         company TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
         forms TEXT
-        dailyLimitConfig TEXT
       )`,
       `CREATE UNIQUE INDEX IF NOT EXISTS uidx_email ON ${tableName}(email ASC)`
     ]
@@ -422,8 +421,8 @@ class GoogleAuth extends DbBase {
 
     user.password = hashedPassword
 
-    return new Promise((resolve, reject) => {
-      const keys = Object.keys(user)
+    const createdUser = await new Promise((resolve, reject) => {
+      const keys = this._getUserObjectKeysMatchingTableColumns(user)
 
       this.db.run(
         `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${Array(keys.length).fill('?').join(', ')})`,
@@ -446,6 +445,28 @@ class GoogleAuth extends DbBase {
         }
       )
     })
+
+    createdUser.dailyLimitConfig = (
+      await (
+        Promise.all(
+          Object.keys(dailyLimitConfig || []).map((category) => {
+            return new Promise((resolve, reject) => {
+              const { alert, block } = dailyLimitConfig[category]
+              this.db.run(
+                `INSERT INTO ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} (admin_id, category, alert, block) VALUES (?, ?, ?, ?)`,
+                [createdUser.id, category, alert, block],
+                function (err) {
+                  if (err) return reject(err)
+                  resolve({ category, alert, block })
+                }
+              )
+            })
+          })
+        )
+      )
+    ).reduce(this._generateReduceDailyLimitsArrayToObjectFn(dailyLimitConfig), {})
+
+    return createdUser
   }
 
   async updateAdmin (email, user) {
@@ -510,8 +531,11 @@ class GoogleAuth extends DbBase {
 
     const adm = await this._getAdminOrThrowError(email, !active)
 
-    return new Promise((resolve, reject) => {
-      const keys = Object.keys(user)
+    const updatedUser = await new Promise((resolve, reject) => {
+      const keys = this._getUserObjectKeysMatchingTableColumns(user)
+
+      // if no fields are detected for update, then just resolve to an empty object
+      if (keys.length === 0) resolve({})
 
       this.db.run(
         `UPDATE ${tableName} SET ${keys.join(' = ?, ')} = ? WHERE id = ?`,
@@ -523,6 +547,43 @@ class GoogleAuth extends DbBase {
         }
       )
     })
+
+    updatedUser.dailyLimitConfig = (
+      await (
+        Promise.all(
+          Object.keys(dailyLimitConfig || []).map((category) => {
+            return new Promise((resolve, reject) => {
+              const { alert, block } = dailyLimitConfig[category]
+              this.db.run(
+                `
+                  INSERT INTO ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} (admin_id, category, alert, block) VALUES (?, ?, ?, ?)
+                    ON CONFLICT (admin_id, category) DO UPDATE SET alert = ?, block = ?
+                `,
+                [adm.id, category, alert, block, alert, block],
+                function (err) {
+                  if (err) return reject(err)
+                  resolve({ category, alert, block })
+                }
+              )
+            })
+          })
+        )
+      )
+    ).reduce(this._generateReduceDailyLimitsArrayToObjectFn(dailyLimitConfig), {})
+
+    return updatedUser
+  }
+
+  /**
+   * This private method generates the reduce method used when converting the admin user daily limit records retrieved from the database into an object
+   * @param {DailyLimitConfig} dailyLimitConfig - Object with the source data to be used during the reduce operation
+   * @returns {Function} The reduce function
+   */
+  _generateReduceDailyLimitsArrayToObjectFn (dailyLimitConfig) {
+    return (acc, curr) => {
+      acc[curr.category] = pick(dailyLimitConfig[curr.category], ['alert', 'block'])
+      return acc
+    }
   }
 
   /**
@@ -549,8 +610,18 @@ class GoogleAuth extends DbBase {
    * @returns {Array<string|number|boolean|undefined|Date>} Serialized values
    */
   _convertUserObjectToValuesArray (user) {
-    const keys = Object.keys(user)
+    const keys = this._getUserObjectKeysMatchingTableColumns(user)
     return keys.map(key => SHOULD_STRINGIFY.some(ss => key === ss) ? JSON.stringify(user[key]) : user[key])
+  }
+
+  /**
+   * Returns all the user object keys that match any existing column in the corresponding table in the database
+   * @param {BaseAdminT} user - User object to retrieve the keys from
+   * @returns {string[]} The keys of the user object that also exist as columns in the database table
+   */
+  _getUserObjectKeysMatchingTableColumns (user) {
+    const shouldExclude = ['dailyLimitConfig']
+    return Object.keys(user).filter(k => !shouldExclude.some(se => se === k))
   }
 
   async updateAdminPassword (email, newPassword, oldPassword) {
@@ -715,9 +786,45 @@ class GoogleAuth extends DbBase {
       })
     }
 
+    const dailyLimitConfig = admin ? await this._getAdminUserDailyLimits(email, active) : null
+
     return admin
-      ? _.pick(admin, displayKeys)
+      ? {
+        ..._.pick(admin, displayKeys),
+        dailyLimitConfig
+      }
       : admin
+  }
+
+  /**
+   * Internal method for retrieving the daily limit configuration associated to an admin user.
+   * @param {string} adminUserEmail - Admin to retrieve the daily limits from
+   * @param {boolean} [active=true] - Flag for indicating if we want to consider or not retrieving the daily limits for an admin user that is inactive
+   * @returns {DailyLimitConfigsByCategory|null} An object containing the information of the daily limits configuration associated to the admin user. Null in case there is nothing registered.
+   */
+  async _getAdminUserDailyLimits (adminUserEmail, active = true) {
+    const query = this._buildQueryForRetrievingAdminByEmail(active, ['id'])
+
+    const adminId = (await new Promise((resolve, reject) => {
+      this.db.get(query, [adminUserEmail.toLowerCase()], (err, row) => {
+        if (err) return reject(err)
+        resolve(row.id)
+      })
+    }))
+
+    return new Promise((resolve, reject) => {
+      this.db.all(`SELECT category, alert, block FROM ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} WHERE admin_id = ?`, [adminId], (err, rows) => {
+        if (err) return reject(err)
+        const dailyLimits = rows || []
+
+        if (dailyLimits.length === 0) resolve(null)
+    
+        resolve(dailyLimits.reduce((acc, curr) => {
+          acc[curr.category] = pick(curr, ['alert', 'block'])
+          return acc
+        }, {}))
+      })
+    })
   }
 
   /**
@@ -743,15 +850,23 @@ class GoogleAuth extends DbBase {
 
   async _getAdminFromDB (email, active) {
     return new Promise((resolve, reject) => {
-      const query = active
-        ? `SELECT * FROM ${tableName} WHERE LOWER(email) = ? AND active = 1`
-        : `SELECT * FROM ${tableName} WHERE LOWER(email) = ?`
+      const query = this._buildQueryForRetrievingAdminByEmail(active)
 
       this.db.get(query, [email.toLowerCase()], (err, row) => {
         if (err) return reject(err)
         resolve(row)
       })
     })
+  }
+
+  /**
+   * Generate query string for fetching admin user data
+   * @param {boolean} active - Allows to enable or not retrieving information only for active user
+   * @param {string[]} [columns = ['*']]  - For indicating which columns to retrieve from the database. By default, it retrieves everything.
+   * @returns {string} The query string
+   */
+  _buildQueryForRetrievingAdminByEmail (active, columns = ['*']) {
+    return `SELECT ${columns.join(', ')} FROM ${tableName} WHERE LOWER(email) = ?${active ? ' AND active = 1' : ''}`
   }
 
   _getAdminFromConfig (email) {
@@ -990,8 +1105,10 @@ class GoogleAuth extends DbBase {
   async getAdminUserDailyLimitConfig (adminUserEmail) {
     const admin = await this.getAdmin(adminUserEmail)
     if (!admin) return null
-    const val = admin.dailyLimitConfig
-    if (val) return val
+
+    const dailyLimits = await this._getAdminUserDailyLimits(adminUserEmail)
+    if (dailyLimits && Object.keys(dailyLimits).length) return dailyLimits
+
     return this.getDailyLimitsByAdminLevel(admin.level)
   }
 
@@ -1004,14 +1121,14 @@ class GoogleAuth extends DbBase {
   async removeAdminUserDailyLimitConfig (adminUserEmail) {
     const adm = await this._getAdminOrThrowError(adminUserEmail)
     return new Promise((resolve, reject) => {
-      this.db.run(
-        `UPDATE ${tableName} SET dailyLimitConfig = ? WHERE id = ?`,
-        [null, adm.id],
-        function (err) {
+      this.db.serialize(() => {
+        const statement = this.db.prepare(`DELETE FROM ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} WHERE admin_id = ?`)
+        statement.run([adm.id])
+        statement.finalize(err => {
           if (err) return reject(err)
           resolve(true)
-        }
-      )
+        })
+      })
     })
   }
 }
