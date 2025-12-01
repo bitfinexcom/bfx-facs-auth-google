@@ -1044,6 +1044,9 @@ class GoogleAuth extends DbBase {
   async getDailyLimitsByAdminLevel (level) {
     this._validateAdminLevel(level)
 
+    const dailyLimitsFromCache = this._getDailyLimitCacheRecord(DAILY_LIMIT_CACHE_TYPE.LEVELS, level)
+    if (dailyLimitsFromCache) return dailyLimitsFromCache
+
     return new Promise((resolve, reject) => {
       this.db.all(
         `SELECT category, alert, block FROM ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} WHERE level = ?`,
@@ -1124,7 +1127,11 @@ class GoogleAuth extends DbBase {
       return dailyLimits
     }
 
-    return this.getDailyLimitsByAdminLevel(admin.level)
+    const dailyLimitsByAdminLevel = await this.getDailyLimitsByAdminLevel(admin.level)
+
+    this._setDailyLimitCacheRecord(DAILY_LIMIT_CACHE_TYPE.ADMIN, adminUserEmail, dailyLimitsByAdminLevel)
+
+    return dailyLimitsByAdminLevel
   }
 
   /**
