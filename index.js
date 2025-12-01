@@ -14,7 +14,7 @@ const migrations = require('./migrations')
 const { cloneDeep, isNil, pick } = require('@bitfinexcom/lib-js-util-base')
 const { VALID_DAILY_LIMIT_CATEGORIES, MIN_ADMIN_LEVEL, DB_TABLES, MAX_ADMIN_LEVEL } = require('./shared')
 
-const SHOULD_STRINGIFY = ['forms']
+const FORMS_FIELD = 'forms'
 
 async function hash (password, salt = '') {
   return new Promise((resolve, reject) => {
@@ -105,7 +105,7 @@ class GoogleAuth extends DbBase {
         passwordResetSentAt DATETIME,
         company TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-        forms TEXT
+        ${FORMS_FIELD} TEXT
       )`,
       `CREATE UNIQUE INDEX IF NOT EXISTS uidx_email ON ${tableName}(email ASC)`
     ]
@@ -611,7 +611,7 @@ class GoogleAuth extends DbBase {
    */
   _convertUserObjectToValuesArray (user) {
     const keys = this._getUserObjectKeysMatchingTableColumns(user)
-    return keys.map(key => SHOULD_STRINGIFY.some(ss => key === ss) ? JSON.stringify(user[key]) : user[key])
+    return keys.map(key => key === FORMS_FIELD ? JSON.stringify(user[key]) : user[key])
   }
 
   /**
@@ -778,12 +778,10 @@ class GoogleAuth extends DbBase {
   async getAdmin (email, active = true) {
     const admin = await this._getAdmin(email, active)
     const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
-      'analyticsPrivilege', 'manageAdminsPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', ...SHOULD_STRINGIFY]
+      'analyticsPrivilege', 'manageAdminsPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD]
 
-    if (this.conf.useDB && admin) {
-      SHOULD_STRINGIFY.forEach(ss => {
-        if (admin[ss]) admin[ss] = admin[ss] ? JSON.parse(admin[ss]) : null
-      })
+    if (this.conf.useDB && admin && admin[FORMS_FIELD]) {
+      admin[FORMS_FIELD] = JSON.parse(admin[FORMS_FIELD])
     }
 
     const dailyLimitConfig = admin ? await this._getAdminUserDailyLimits(email, active) : null
