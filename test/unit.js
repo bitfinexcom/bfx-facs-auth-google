@@ -579,6 +579,14 @@ describe('index', () => {
           assert.deepStrictEqual(retrievedDailyLimitConfig, { [category]: { alert: 0, block: 0 } })
         })
 
+        it('should retrieve null when trying to fetch admin user daily limit config which does not have it defined but its level does but we are passing down the flag for disabling falling back to that value', async () => {
+          const levelDailyLimitCreationResult = await authGoogle.setAdminLevelDailyLimit(level, category, { alert: 0, block: 0 })
+          assert.ok(levelDailyLimitCreationResult)
+          await authGoogle.addAdmin(omit(adminWithDailyLimitConfig, ['dailyLimitConfig']))
+          const retrievedDailyLimitConfig = await authGoogle.getAdminUserDailyLimitConfig(adminWithDailyLimitConfig.email, false)
+          assert.equal(retrievedDailyLimitConfig, null)
+        })
+
         it('should retrieve null when no daily limit has been set for the admin and its level either', async () => {
           await authGoogle.addAdmin(omit(adminWithDailyLimitConfig, ['dailyLimitConfig']))
           await assertDailyLimitConfig(null)

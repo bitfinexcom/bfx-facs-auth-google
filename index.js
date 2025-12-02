@@ -1069,19 +1069,21 @@ class GoogleAuth extends DbBase {
   /**
    * Retrieves the daily limit config associated to an admin
    * @param {string} adminUserEmail - The email address associated to the admin.
+   * @param {boolean} [shouldFallbackToAdminLevelDailyLimits=true] - When admin user does not have associated any daily limit config, we fallback to use
+   * the daily limits associated to the admin level. By using this flag as `false`, we should disable that behavior.
    * @throws {UserError} If no admin associated to the provided email address is found, this exception is thrown.
    * @returns {DailyLimitConfigsByCategory|null} Returns the fully fleshed daily limit config object associated to the admin.
    * If it hasn't been set yet, then returns the daily limit config object associated to the admin level. If this does not exist
    * either then return `null`.
    */
-  async getAdminUserDailyLimitConfig (adminUserEmail) {
+  async getAdminUserDailyLimitConfig (adminUserEmail, shouldFallbackToAdminLevelDailyLimits = true) {
     const admin = await this.getAdmin(adminUserEmail)
     if (!admin) return null
 
     const dailyLimits = admin.dailyLimitConfig
     if (dailyLimits && Object.keys(dailyLimits).length) return dailyLimits
 
-    return this.getDailyLimitsByAdminLevel(admin.level)
+    return shouldFallbackToAdminLevelDailyLimits ? this.getDailyLimitsByAdminLevel(admin.level) : null
   }
 
   /**
