@@ -446,25 +446,27 @@ class GoogleAuth extends DbBase {
       )
     })
 
-    createdUser.dailyLimitConfig = (
-      await (
-        Promise.all(
-          Object.keys(dailyLimitConfig || []).map((category) => {
-            return new Promise((resolve, reject) => {
-              const { alert, block } = dailyLimitConfig[category]
-              this.db.run(
-                `INSERT INTO ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} (admin_id, category, alert, block) VALUES (?, ?, ?, ?)`,
-                [createdUser.id, category, alert, block],
-                function (err) {
-                  if (err) return reject(err)
-                  resolve({ category, alert, block })
-                }
-              )
+    if (dailyLimitConfig) {
+      createdUser.dailyLimitConfig = (
+        await (
+          Promise.all(
+            Object.keys(dailyLimitConfig || []).map((category) => {
+              return new Promise((resolve, reject) => {
+                const { alert, block } = dailyLimitConfig[category]
+                this.db.run(
+                  `INSERT INTO ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} (admin_id, category, alert, block) VALUES (?, ?, ?, ?)`,
+                  [createdUser.id, category, alert, block],
+                  function (err) {
+                    if (err) return reject(err)
+                    resolve({ category, alert, block })
+                  }
+                )
+              })
             })
-          })
+          )
         )
-      )
-    ).reduce(this._generateReduceDailyLimitsArrayToObjectFn(dailyLimitConfig), {})
+      ).reduce(this._generateReduceDailyLimitsArrayToObjectFn(dailyLimitConfig), {})
+    }
 
     return createdUser
   }
