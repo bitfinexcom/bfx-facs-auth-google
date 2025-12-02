@@ -814,7 +814,9 @@ class GoogleAuth extends DbBase {
 
   async _getAdminFromDB (email, active) {
     const admin = await new Promise((resolve, reject) => {
-      const query = this._buildQueryForRetrievingAdminByEmail(active)
+      const query = active
+        ? `SELECT * FROM ${tableName} WHERE LOWER(email) = ? AND active = 1`
+        : `SELECT * FROM ${tableName} WHERE LOWER(email) = ?`
 
       this.db.get(query, [email.toLowerCase()], (err, row) => {
         if (err) return reject(err)
@@ -837,16 +839,6 @@ class GoogleAuth extends DbBase {
       })
     }
     return admin
-  }
-
-  /**
-   * Generate query string for fetching admin user data
-   * @param {boolean} active - Allows to enable or not retrieving information only for active user
-   * @param {string[]} [columns = ['*']]  - For indicating which columns to retrieve from the database. By default, it retrieves everything.
-   * @returns {string} The query string
-   */
-  _buildQueryForRetrievingAdminByEmail (active, columns = ['*']) {
-    return `SELECT ${columns.join(', ')} FROM ${tableName} WHERE LOWER(email) = ?${active ? ' AND active = 1' : ''}`
   }
 
   _getAdminFromConfig (email) {
