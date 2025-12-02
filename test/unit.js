@@ -16,6 +16,7 @@ const { UserError } = require('../errors')
 const dbPath = path.join(__dirname, './db/')
 const ctx = { root: './test' }
 const caller = { ctx }
+const authGoogle = new AuthGoogle(caller, { conf }, ctx)
 
 const cleanup = () => {
   if (fs.existsSync(dbPath)) {
@@ -33,10 +34,7 @@ const testAdminWithForms = {
 }
 
 describe('index', () => {
-  let authGoogle
-
   beforeEach(async () => {
-    authGoogle = new AuthGoogle(caller, { conf }, ctx)
     cleanup()
     await new Promise((resolve) => authGoogle.start(resolve))
   })

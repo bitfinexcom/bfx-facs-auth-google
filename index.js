@@ -37,13 +37,6 @@ async function verify (password, hash) {
   })
 }
 
-const DAILY_LIMIT_CACHE_TYPE = Object.freeze({
-  ADMIN: 'admin',
-  LEVELS: 'levels'
-})
-
-const DAILY_LIMIT_CACHE_TTL = 3600 * 1000
-
 const tableName = DB_TABLES.ADMIN_USERS
 /**
  * @typedef {('opened'|'displayed')} DailyLimitCategory
@@ -128,10 +121,6 @@ class GoogleAuth extends DbBase {
 
     if (opts.conf) this.conf = opts.conf
     this.checkAdmAccessLevel = this.checkAdmAccessLevel.bind(this)
-
-    this.dailyLimitsCache = new Map()
-    this.dailyLimitsCache.set(DAILY_LIMIT_CACHE_TYPE.ADMIN, new Map())
-    this.dailyLimitsCache.set(DAILY_LIMIT_CACHE_TYPE.LEVELS, new Map())
   }
 
   _start (cb) {
@@ -457,29 +446,25 @@ class GoogleAuth extends DbBase {
       )
     })
 
-    if (dailyLimitConfig) {
-      createdUser.dailyLimitConfig = (
-        await (
-          Promise.all(
-            Object.keys(dailyLimitConfig).map((category) => {
-              return new Promise((resolve, reject) => {
-                const { alert, block } = dailyLimitConfig[category]
-                this.db.run(
-                  `INSERT INTO ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} (admin_id, category, alert, block) VALUES (?, ?, ?, ?)`,
-                  [createdUser.id, category, alert, block],
-                  function (err) {
-                    if (err) return reject(err)
-                    resolve({ category, alert, block })
-                  }
-                )
-              })
+    createdUser.dailyLimitConfig = (
+      await (
+        Promise.all(
+          Object.keys(dailyLimitConfig || []).map((category) => {
+            return new Promise((resolve, reject) => {
+              const { alert, block } = dailyLimitConfig[category]
+              this.db.run(
+                `INSERT INTO ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} (admin_id, category, alert, block) VALUES (?, ?, ?, ?)`,
+                [createdUser.id, category, alert, block],
+                function (err) {
+                  if (err) return reject(err)
+                  resolve({ category, alert, block })
+                }
+              )
             })
-          )
+          })
         )
-      ).reduce(this._generateReduceDailyLimitsArrayToObjectFn(dailyLimitConfig), {})
-
-      this._setDailyLimitCacheRecord('admin', email, createdUser.dailyLimitConfig)
-    }
+      )
+    ).reduce(this._generateReduceDailyLimitsArrayToObjectFn(dailyLimitConfig), {})
 
     return createdUser
   }
@@ -563,32 +548,28 @@ class GoogleAuth extends DbBase {
       )
     })
 
-    if (dailyLimitConfig) {
-      updatedUser.dailyLimitConfig = (
-        await (
-          Promise.all(
-            Object.keys(dailyLimitConfig).map((category) => {
-              return new Promise((resolve, reject) => {
-                const { alert, block } = dailyLimitConfig[category]
-                this.db.run(
-                  `
-                    INSERT INTO ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} (admin_id, category, alert, block) VALUES (?, ?, ?, ?)
-                      ON CONFLICT (admin_id, category) DO UPDATE SET alert = ?, block = ?
-                  `,
-                  [adm.id, category, alert, block, alert, block],
-                  function (err) {
-                    if (err) return reject(err)
-                    resolve({ category, alert, block })
-                  }
-                )
-              })
+    updatedUser.dailyLimitConfig = (
+      await (
+        Promise.all(
+          Object.keys(dailyLimitConfig || []).map((category) => {
+            return new Promise((resolve, reject) => {
+              const { alert, block } = dailyLimitConfig[category]
+              this.db.run(
+                `
+                  INSERT INTO ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} (admin_id, category, alert, block) VALUES (?, ?, ?, ?)
+                    ON CONFLICT (admin_id, category) DO UPDATE SET alert = ?, block = ?
+                `,
+                [adm.id, category, alert, block, alert, block],
+                function (err) {
+                  if (err) return reject(err)
+                  resolve({ category, alert, block })
+                }
+              )
             })
-          )
+          })
         )
-      ).reduce(this._generateReduceDailyLimitsArrayToObjectFn(dailyLimitConfig), {})
-
-      this._setDailyLimitCacheRecord('admin', email, updatedUser.dailyLimitConfig)
-    }
+      )
+    ).reduce(this._generateReduceDailyLimitsArrayToObjectFn(dailyLimitConfig), {})
 
     return updatedUser
   }
@@ -952,15 +933,13 @@ class GoogleAuth extends DbBase {
       resolve(true)
     }
 
-    let result
-
     if (existingLevelDailyLimit) {
       const valuesToUpdate = {}
       if (!isNil(alert)) valuesToUpdate.alert = alert
       if (!isNil(block)) valuesToUpdate.block = block
       const fields = Object.keys(valuesToUpdate)
 
-      result = await new Promise((resolve, reject) => {
+      return new Promise((resolve, reject) => {
         this.db.run(
           `UPDATE ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} SET ${fields.join(' = ?, ')} = ? WHERE level = ? AND category = ?`,
           Object.values(valuesToUpdate).concat([level, category]),
@@ -968,7 +947,7 @@ class GoogleAuth extends DbBase {
         )
       })
     } else {
-      result = await new Promise((resolve, reject) => {
+      return new Promise((resolve, reject) => {
         this.db.run(
           `INSERT INTO ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} (level, category, alert, block) VALUES (?, ?, ?, ?)`,
           [level, category, alert, block],
@@ -976,10 +955,6 @@ class GoogleAuth extends DbBase {
         )
       })
     }
-
-    this._setDailyLimitCacheRecord(DAILY_LIMIT_CACHE_TYPE.LEVELS, level, { [category]: { alert, block } })
-
-    return result
   }
 
   /**
@@ -991,7 +966,7 @@ class GoogleAuth extends DbBase {
    */
   async removeAdminLevelDailyLimits (level) {
     this._validateAdminLevel(level)
-    const deleted = await new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       this.db.serialize(() => {
         const statement = this.db.prepare(`DELETE FROM ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} WHERE level = ?`)
         statement.run([level])
@@ -1001,8 +976,6 @@ class GoogleAuth extends DbBase {
         })
       })
     })
-    if (deleted) this._deleteDailyLimitCacheRecord(DAILY_LIMIT_CACHE_TYPE.LEVELS, level)
-    return deleted
   }
 
   /**
@@ -1018,16 +991,12 @@ class GoogleAuth extends DbBase {
     this._validateAdminLevel(level)
     this._validateDailyLimitCategory(category)
 
-    const dailyLimitFromCache = this._getDailyLimitCacheRecord(DAILY_LIMIT_CACHE_TYPE.LEVELS, level)
-    if (!dailyLimitFromCache) return dailyLimitFromCache
-
     return new Promise((resolve, reject) => {
       this.db.get(
         `SELECT alert, block FROM ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} WHERE level = ? AND category = ? LIMIT 1`,
         [level, category],
-        (err, row) => {
+        function (err, row) {
           if (err) return reject(err)
-          if (row) this._setDailyLimitCacheRecord(DAILY_LIMIT_CACHE_TYPE.LEVELS, level, { [category]: row })
           resolve(row || null)
         }
       )
@@ -1043,9 +1012,6 @@ class GoogleAuth extends DbBase {
    */
   async getDailyLimitsByAdminLevel (level) {
     this._validateAdminLevel(level)
-
-    const dailyLimitsFromCache = this._getDailyLimitCacheRecord(DAILY_LIMIT_CACHE_TYPE.LEVELS, level)
-    if (dailyLimitsFromCache) return dailyLimitsFromCache
 
     return new Promise((resolve, reject) => {
       this.db.all(
@@ -1115,23 +1081,13 @@ class GoogleAuth extends DbBase {
    * either then return `null`.
    */
   async getAdminUserDailyLimitConfig (adminUserEmail) {
-    const dailyLimitsFromCache = this._getDailyLimitCacheRecord(DAILY_LIMIT_CACHE_TYPE.ADMIN, adminUserEmail)
-    if (dailyLimitsFromCache) return dailyLimitsFromCache
-
     const admin = await this.getAdmin(adminUserEmail)
     if (!admin) return null
 
     const dailyLimits = admin.dailyLimitConfig
-    if (dailyLimits && Object.keys(dailyLimits).length) {
-      this._setDailyLimitCacheRecord(DAILY_LIMIT_CACHE_TYPE.ADMIN, adminUserEmail, dailyLimits)
-      return dailyLimits
-    }
+    if (dailyLimits && Object.keys(dailyLimits).length) return dailyLimits
 
-    const dailyLimitsByAdminLevel = await this.getDailyLimitsByAdminLevel(admin.level)
-
-    this._setDailyLimitCacheRecord(DAILY_LIMIT_CACHE_TYPE.ADMIN, adminUserEmail, dailyLimitsByAdminLevel)
-
-    return dailyLimitsByAdminLevel
+    return this.getDailyLimitsByAdminLevel(admin.level)
   }
 
   /**
@@ -1142,7 +1098,7 @@ class GoogleAuth extends DbBase {
    */
   async removeAdminUserDailyLimitConfig (adminUserEmail) {
     const adm = await this._getAdminOrThrowError(adminUserEmail)
-    const deleted = await new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       this.db.serialize(() => {
         const statement = this.db.prepare(`DELETE FROM ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} WHERE admin_id = ?`)
         statement.run([adm.id])
@@ -1152,52 +1108,6 @@ class GoogleAuth extends DbBase {
         })
       })
     })
-    if (deleted) this._deleteDailyLimitCacheRecord(DAILY_LIMIT_CACHE_TYPE.ADMIN, adminUserEmail)
-    return deleted
-  }
-
-  /**
-   * Retrieves a record from the cache dedicated to the daily limits information.
-   * @param {'admins'|'levels'} type - Type of record (admin user or admin level) that we are retrieving the cache record from
-   * @param {string|number} identifier - The string referring to the admin user email or, if it's number, the level, we are retrieving the cache record from
-   * @returns {DailyLimitConfigsByCategory|null} The value stored in the cache, or `null` in case the record referenced by `type` and `identifier` does not exist or it's outdated.
-   */
-  _getDailyLimitCacheRecord (type, identifier) {
-    const record = this.dailyLimitsCache.get(type).get(identifier)
-
-    if (!record) return null
-
-    if (record.ts < Date.now() - DAILY_LIMIT_CACHE_TTL) {
-      this.dailyLimitsCache.get(type).delete(identifier)
-      return null
-    }
-
-    return record.val
-  }
-
-  /**
-   * Saves a record in the cache dedicated to the daily limits information.
-   * @param {'admins'|'levels'} type - Type of record (admin user or admin level) that we are storing the cache record for
-   * @param {string|number} identifier - The string referring to the admin user email or, if it's number, the level, we are storing the cache record for
-   * @param {DailyLimitConfigsByCategory} value - The value to be stored in the cache.
-   */
-  _setDailyLimitCacheRecord (type, identifier, value) {
-    this.dailyLimitsCache.get(type).set(identifier, {
-      ts: Date.now(),
-      val: {
-        ...(this._getDailyLimitCacheRecord(type, identifier)?.val || {}),
-        ...value
-      }
-    })
-  }
-
-  /**
-   * Deletes a record from the cache dedicated to the daily limits information.
-   * @param {'admins'|'levels'} type - Type of record (admin user or admin level) that we are deleting from the cache record
-   * @param {string|number} identifier - The string referring to the admin user email or, if it's number, the level, that we are deleting from the cache record
-   */
-  _deleteDailyLimitCacheRecord (type, identifier) {
-    delete this.dailyLimitsCache.get(type)?.delete(identifier)
   }
 }
 
