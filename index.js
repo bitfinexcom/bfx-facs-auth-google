@@ -447,7 +447,7 @@ class GoogleAuth extends DbBase {
     })
 
     if (dailyLimitConfig) {
-      createdUser.dailyLimitConfig = (
+      createdUser.dailyLimitConfig = this._convertDailyLimitsArrayToObject(
         await (
           Promise.all(
             Object.keys(dailyLimitConfig || []).map((category) => {
@@ -465,7 +465,7 @@ class GoogleAuth extends DbBase {
             })
           )
         )
-      ).reduce(this._generateReduceDailyLimitsArrayToObjectFn(dailyLimitConfig), {})
+      )
     }
 
     return createdUser
@@ -550,7 +550,7 @@ class GoogleAuth extends DbBase {
       )
     })
 
-    updatedUser.dailyLimitConfig = (
+    updatedUser.dailyLimitConfig = this._convertDailyLimitsArrayToObject(
       await (
         Promise.all(
           Object.keys(dailyLimitConfig || []).map((category) => {
@@ -571,21 +571,21 @@ class GoogleAuth extends DbBase {
           })
         )
       )
-    ).reduce(this._generateReduceDailyLimitsArrayToObjectFn(dailyLimitConfig), {})
+    )
 
     return updatedUser
   }
 
   /**
-   * This private method generates the reduce method used when converting the admin user daily limit records retrieved from the database into an object
-   * @param {DailyLimitConfig} dailyLimitConfig - Object with the source data to be used during the reduce operation
-   * @returns {Function} The reduce function
+   * This private method converts an array containing daily limit elements to an object
+   * @param {{ category: DailyLimitCategory, alert: number, block: number }[]} dailyLimitsArr - The array containing the daily limits objects
+   * @returns {DailyLimitConfigsByCategory} The object generated from iterating through the `dailyLimitsArr`
    */
-  _generateReduceDailyLimitsArrayToObjectFn (dailyLimitConfig) {
-    return (acc, curr) => {
-      acc[curr.category] = pick(dailyLimitConfig[curr.category], ['alert', 'block'])
+  _convertDailyLimitsArrayToObject (dailyLimitsArr) {
+    return dailyLimitsArr.reduce((acc, curr) => {
+      acc[curr.category] = pick(curr, ['alert', 'block'])
       return acc
-    }
+    }, {})
   }
 
   /**
@@ -831,10 +831,7 @@ class GoogleAuth extends DbBase {
 
           if (dailyLimits.length === 0) resolve(null)
 
-          resolve(dailyLimits.reduce((acc, curr) => {
-            acc[curr.category] = pick(curr, ['alert', 'block'])
-            return acc
-          }, {}))
+          resolve(this._convertDailyLimitsArrayToObject(dailyLimits))
         })
       })
     }
