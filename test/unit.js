@@ -174,6 +174,11 @@ describe('index', () => {
           assert.ok(levelDailyLimit)
         })
 
+        it('should retrieve true from calling areDailyLimitsPopulated after creating adming level with dailyLimitConfig', async () => {
+          await authGoogle.setAdminLevelDailyLimit(level, category, { alert: 0, block: 0 })
+          assert.ok(await authGoogle.areDailyLimitsPopulated())
+        })
+
         it('should update succesfully an admin level daily limit config', async () => {
           const levelDailyLimit = await authGoogle.setAdminLevelDailyLimit(level, category, { alert: 0, block: 0 })
           assert.ok(levelDailyLimit)
@@ -182,6 +187,14 @@ describe('index', () => {
           assert.ok(updateResult)
           const retrievedLevelDailyLimit = await authGoogle.getAdminLevelDailyLimit(level, category)
           assert.deepStrictEqual(retrievedLevelDailyLimit, update)
+        })
+
+        it('should retrieve true from calling areDailyLimitsPopulated after creating updating level with dailyLimitConfig', async () => {
+          const levelDailyLimit = await authGoogle.setAdminLevelDailyLimit(level, category, { alert: 0, block: 0 })
+          assert.ok(levelDailyLimit)
+          const updateResult = await authGoogle.setAdminLevelDailyLimit(level, category, { alert: 10, block: 20 })
+          assert.ok(updateResult)
+          assert.ok(await authGoogle.areDailyLimitsPopulated())
         })
 
         it('should throw error when trying to set an admin level daily limit with non numeric value for admin level', async () => {
@@ -362,6 +375,15 @@ describe('index', () => {
           assert.deepStrictEqual(await authGoogle.getAdminLevelDailyLimit(level1, category0), { alert: 0, block: 0 })
         })
 
+        it('should retrieve false from calling areDailyLimitsPopulated after removing the single daily limit config existing associated to an admin level', async () => {
+          const level0 = 0
+          const category0 = VALID_DAILY_LIMIT_CATEGORIES[0]
+          await authGoogle.setAdminLevelDailyLimit(level0, category0, { alert: 0, block: 0 })
+          await authGoogle.removeAdminLevelDailyLimits(level0)
+          assert.strictEqual(await authGoogle.getAdminLevelDailyLimit(level0, category0), null)
+          assert.ok(!(await authGoogle.areDailyLimitsPopulated()))
+        })
+
         it('should throw error when trying to remove admin level daily limits with non numeric value for admin level', async () => {
           const invalidAdminLevel = 'non numeric value'
           await assertUserError(
@@ -404,6 +426,11 @@ describe('index', () => {
         it('should create admin user with dailyLimitConfig', async () => {
           await authGoogle.addAdmin(adminWithDailyLimitConfig)
           await assertDailyLimitConfig(dailyLimitConfig)
+        })
+
+        it('should retrieve true from calling areDailyLimitsPopulated after creating adming user with dailyLimitConfig', async () => {
+          await authGoogle.addAdmin(adminWithDailyLimitConfig)
+          assert.ok(await authGoogle.areDailyLimitsPopulated())
         })
 
         it('should throw error when creating admin user with dailyConfig not being an object', async () => {
@@ -483,6 +510,14 @@ describe('index', () => {
           await assertDailyLimitConfig(null)
           await authGoogle.updateAdmin(testAdminEmail, { dailyLimitConfig })
           await assertDailyLimitConfig(dailyLimitConfig)
+        })
+
+        it('should retrieve true from calling areDailyLimitsPopulated after updating adming user with dailyLimitConfig', async () => {
+          await authGoogle.addAdmin(omit(adminWithDailyLimitConfig, ['dailyLimitConfig']))
+          await assertDailyLimitConfig(null)
+          await authGoogle.updateAdmin(testAdminEmail, { dailyLimitConfig })
+          await assertDailyLimitConfig(dailyLimitConfig)
+          assert.ok(await authGoogle.areDailyLimitsPopulated())
         })
 
         it('should nullify admin user daily limit config', async () => {
@@ -608,6 +643,14 @@ describe('index', () => {
           await assertDailyLimitConfig(dailyLimitConfig)
           await authGoogle.removeAdminUserDailyLimitConfig(adminWithDailyLimitConfig.email)
           await assertDailyLimitConfig(null)
+        })
+
+        it('should retrieve false from calling areDailyLimitsPopulated after removing the single daily limit config existing associated to an admin user', async () => {
+          await authGoogle.addAdmin(adminWithDailyLimitConfig)
+          await assertDailyLimitConfig(dailyLimitConfig)
+          await authGoogle.removeAdminUserDailyLimitConfig(adminWithDailyLimitConfig.email)
+          await assertDailyLimitConfig(null)
+          assert.ok(!(await authGoogle.areDailyLimitsPopulated()))
         })
 
         it('should throw error when trying to remove a daily limit config for a non existing admin', async () => {

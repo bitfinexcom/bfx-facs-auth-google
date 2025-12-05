@@ -1102,6 +1102,20 @@ class GoogleAuth extends DbBase {
       })
     })
   }
+
+  /**
+   * Verify that is stored at least one daily limit record associated either to any admin user or admin level
+   * @returns {Boolean} The result of the verification
+   */
+  async areDailyLimitsPopulated () {
+    const queryTableIsPopulated = async (table) => new Promise((resolve, reject) => {
+      this.db.get(`SELECT * FROM ${table} LIMIT 1`, (err, row) => {
+        if (err) return reject(err)
+        resolve(Boolean(row))
+      })
+    })
+    return ((await queryTableIsPopulated(DB_TABLES.ADMIN_USER_DAILY_LIMITS)) || ((await queryTableIsPopulated(DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS))))
+  }
 }
 
 module.exports = GoogleAuth
