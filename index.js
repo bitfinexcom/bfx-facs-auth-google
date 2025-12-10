@@ -447,25 +447,8 @@ class GoogleAuth extends DbBase {
     })
 
     if (dailyLimitConfig) {
-      createdUser.dailyLimitConfig = this._convertDailyLimitsArrayToObject(
-        await (
-          Promise.all(
-            Object.keys(dailyLimitConfig || []).map((category) => {
-              return new Promise((resolve, reject) => {
-                const { alert, block } = dailyLimitConfig[category]
-                this.db.run(
-                  `INSERT INTO ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} (admin_id, category, alert, block) VALUES (?, ?, ?, ?)`,
-                  [createdUser.id, category, alert, block],
-                  function (err) {
-                    if (err) return reject(err)
-                    resolve({ category, alert, block })
-                  }
-                )
-              })
-            })
-          )
-        )
-      )
+      await this._insertIntoAdminUserDailyLimits(dailyLimitConfig, createdUser.id)
+      createdUser.dailyLimitConfig = dailyLimitConfig
     }
 
     return createdUser
@@ -550,40 +533,51 @@ class GoogleAuth extends DbBase {
       )
     })
 
-    updatedUser.dailyLimitConfig = this._convertDailyLimitsArrayToObject(
-      await (
-        Promise.all(
-          Object.keys(dailyLimitConfig || []).map((category) => {
-            return new Promise((resolve, reject) => {
-              const { alert, block } = dailyLimitConfig[category]
-              this.db.run(
-                `
-                  INSERT INTO ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} (admin_id, category, alert, block) VALUES (?, ?, ?, ?)
-                    ON CONFLICT (admin_id, category) DO UPDATE SET alert = ?, block = ?
-                `,
-                [adm.id, category, alert, block, alert, block],
-                function (err) {
-                  if (err) return reject(err)
-                  resolve({ category, alert, block })
-                }
-              )
-            })
-          })
-        )
-      )
-    )
+    if (dailyLimitConfig) {
+      await this._insertIntoAdminUserDailyLimits(dailyLimitConfig, adm.id, true)
+      updatedUser.dailyLimitConfig = dailyLimitConfig
+    }
 
     return updatedUser
   }
 
   /**
+   * Run queries against database where one or more records are upserted into the admin user daily limits table.
+   * @param {DailyLimitConfig} dailyLimitConfig - Object containing the information of records to be inserted/updated.
+   * @param {Number} adminUserId - Primary ID of the user associated to the daily limit records to be inserted/updated.
+   * @param {boolean} [checkConflict=false] - Used for enabling checking on existence of the admin user daily limit records in the database.
+   * For each record that's detected, an upsert-like operation instead of a pure insert is executed.
+   */
+  async _insertIntoAdminUserDailyLimits (dailyLimitConfig, adminUserId, checkConflict = false) {
+    return Promise.all(
+      Object.keys(dailyLimitConfig).map((category) => {
+        return new Promise((resolve, reject) => {
+          const { alert, block } = dailyLimitConfig[category]
+          this.db.run(
+            `
+              INSERT INTO ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} (admin_id, category, alert, block) VALUES (?, ?, ?, ?)
+                ${checkConflict ? 'ON CONFLICT (admin_id, category) DO UPDATE SET alert = ?, block = ?' : ''}
+            `,
+            [adminUserId, category, alert, block].concat(checkConflict ? [alert, block] : []),
+            function (err) {
+              if (err) return reject(err)
+              resolve({ category, alert, block })
+            }
+          )
+        })
+      })
+    )
+  }
+
+  /**
    * This private method converts an array containing daily limit elements to an object
-   * @param {{ category: DailyLimitCategory, alert: number, block: number }[]} dailyLimitsArr - The array containing the daily limits objects
+   * @param {{ level?: number; category?: DailyLimitCategory, alert: number, block: number }[]} dailyLimitsArr - The array containing the daily limits objects
+   * @param {'level'|'category'} fieldToReduceBy - The name of the field to use its values as keys for the generated object.
    * @returns {DailyLimitConfigsByCategory} The object generated from iterating through the `dailyLimitsArr`
    */
-  _convertDailyLimitsArrayToObject (dailyLimitsArr) {
+  _convertDailyLimitsArrayToObject (dailyLimitsArr, fieldToReduceBy) {
     return dailyLimitsArr.reduce((acc, curr) => {
-      acc[curr.category] = pick(curr, ['alert', 'block'])
+      acc[curr[fieldToReduceBy]] = pick(curr, ['alert', 'block'])
       return acc
     }, {})
   }
@@ -599,7 +593,7 @@ class GoogleAuth extends DbBase {
         (
           typeof dailyLimitConfig === 'object' &&
           Object.keys(dailyLimitConfig).every(k => VALID_DAILY_LIMIT_CATEGORIES.some(c => c === k)) &&
-          Object.values(dailyLimitConfig).every(v => (_.isInteger(v.alert) && v.alert >= 0 && _.isInteger(v.block) && v.block >= 0))
+          Object.values(dailyLimitConfig).every(v => (Number.isInteger(v.alert) && v.alert >= 0 && Number.isInteger(v.block) && v.block >= 0))
         ),
         'dailyLimitConfig must be a DailyLimitConfigsByCategory object'
       )
@@ -787,7 +781,7 @@ class GoogleAuth extends DbBase {
     }
 
     return admin
-      ? _.pick(admin, displayKeys)
+      ? pick(admin, displayKeys)
       : admin
   }
 
@@ -831,7 +825,7 @@ class GoogleAuth extends DbBase {
 
           if (dailyLimits.length === 0) resolve(null)
 
-          resolve(this._convertDailyLimitsArrayToObject(dailyLimits))
+          resolve(this._convertDailyLimitsArrayToObject(dailyLimits, 'category'))
         })
       })
     }
@@ -914,10 +908,21 @@ class GoogleAuth extends DbBase {
 
     const { alert, block } = config ?? {}
 
-    if (isNil(alert) && isNil(block)) throw new UserError('Neither alert nor block values are provided')
-    if (!existingLevelDailyLimit && ((!isNil(alert) && isNil(block)) || (isNil(alert) && !isNil(block)))) throw new UserError('When creating an admin level daily limit both alert and block must be provided')
-    if (!isNil(alert) && (!Number.isInteger(alert) || alert < 0)) throw new UserError('When alert value is provided, must be integer and greater or equal to zero')
-    if (!isNil(block) && (!Number.isInteger(block) || block < 0)) throw new UserError('When block value is provided, must be integer and greater or equal to zero')
+    if (isNil(alert) && isNil(block)) {
+      throw new UserError('Neither alert nor block values are provided')
+    }
+
+    if (!existingLevelDailyLimit && isNil(alert) !== isNil(block)) {
+      throw new UserError('When creating an admin level daily limit both alert and block must be provided')
+    }
+
+    if (!isNil(alert) && (!Number.isInteger(alert) || alert < 0)) {
+      throw new UserError('When alert value is provided, must be integer and greater or equal to zero')
+    }
+
+    if (!isNil(block) && (!Number.isInteger(block) || block < 0)) {
+      throw new UserError('When block value is provided, must be integer and greater or equal to zero')
+    }
 
     const cb = (resolve, reject) => function (err) {
       if (err) return reject(err)
@@ -1008,13 +1013,10 @@ class GoogleAuth extends DbBase {
       this.db.all(
         `SELECT category, alert, block FROM ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} WHERE level = ?`,
         [level],
-        function (err, rows) {
+        (err, rows) => {
           if (err) return reject(err)
           if (!rows?.length) resolve(null)
-          resolve(rows.reduce((acc, curr) => {
-            acc[curr.category] = pick(curr, ['alert', 'block'])
-            return acc
-          }, {}))
+          resolve(this._convertDailyLimitsArrayToObject(rows, 'category'))
         }
       )
     })
@@ -1034,12 +1036,9 @@ class GoogleAuth extends DbBase {
       this.db.all(
         `SELECT level, alert, block FROM ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} WHERE category = ?`,
         [category],
-        function (err, rows) {
+        (err, rows) => {
           if (err) return reject(err)
-          resolve((rows ?? []).reduce((acc, curr) => {
-            acc[curr.level] = pick(curr, ['alert', 'block'])
-            return acc
-          }, {}))
+          resolve(this._convertDailyLimitsArrayToObject(rows ?? [], 'level'))
         }
       )
     })
@@ -1051,7 +1050,9 @@ class GoogleAuth extends DbBase {
    * @throws {UserError} If `level` is not a valid `AdminLevel`
    */
   _validateAdminLevel (level) {
-    if (!Number.isInteger(level) || !_.inRange(level, MIN_ADMIN_LEVEL, MAX_ADMIN_LEVEL + 1)) throw new UserError(`"${level}" as admin level is invalid`)
+    if (!Number.isInteger(level) || !_.inRange(level, MIN_ADMIN_LEVEL, MAX_ADMIN_LEVEL + 1)) {
+      throw new UserError(`"${level}" as admin level is invalid`)
+    }
   }
 
   /**
@@ -1060,7 +1061,9 @@ class GoogleAuth extends DbBase {
    * @throws {UserError} If `category` is not a valid `DailyLimitCategory`
    */
   _validateDailyLimitCategory (category) {
-    if (!VALID_DAILY_LIMIT_CATEGORIES.some(c => c === category)) throw new UserError(`"${category}" as daily limit category value is invalid`)
+    if (!VALID_DAILY_LIMIT_CATEGORIES.some(c => c === category)) {
+      throw new UserError(`"${category}" as daily limit category value is invalid`)
+    }
   }
 
   /**
