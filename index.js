@@ -904,35 +904,35 @@ class GoogleAuth extends DbBase {
     this._validateAdminLevel(level)
     this._validateDailyLimitCategory(category)
 
-    const existingLevelDailyLimit = await this.getAdminLevelDailyLimit(level, category)
-
     const { alert, block } = config ?? {}
 
     if (isNil(alert) && isNil(block)) {
       throw new UserError('Neither alert nor block values are provided')
     }
 
-    if (!existingLevelDailyLimit && isNil(alert) !== isNil(block)) {
-      throw new UserError('When creating an admin level daily limit both alert and block must be provided')
+    const shouldUpdate = Boolean(await this.getAdminLevelDailyLimit(level, category))
+
+    const isValidNumber = n => Number.isInteger(n) && n >= 0
+
+    const throwRequiredValidNumberError = fieldName => {
+      throw new UserError(`When ${fieldName} value is provided, must be integer and greater or equal to zero`)
     }
 
-    if (!isNil(alert) && (!Number.isInteger(alert) || alert < 0)) {
-      throw new UserError('When alert value is provided, must be integer and greater or equal to zero')
-    }
-
-    if (!isNil(block) && (!Number.isInteger(block) || block < 0)) {
-      throw new UserError('When block value is provided, must be integer and greater or equal to zero')
-    }
-
-    const cb = (resolve, reject) => function (err) {
+    const cb = (resolve, reject) => (err) => {
       if (err) return reject(err)
       resolve(true)
     }
 
-    if (existingLevelDailyLimit) {
+    if (shouldUpdate) {
+      if (!isNil(alert) && !isValidNumber(alert)) throwRequiredValidNumberError('alert')
+
+      if (!isNil(block) && !isValidNumber(block)) throwRequiredValidNumberError('block')
+
       const valuesToUpdate = {}
+
       if (!isNil(alert)) valuesToUpdate.alert = alert
       if (!isNil(block)) valuesToUpdate.block = block
+
       const fields = Object.keys(valuesToUpdate)
 
       return new Promise((resolve, reject) => {
@@ -943,6 +943,14 @@ class GoogleAuth extends DbBase {
         )
       })
     } else {
+      if (isNil(alert) || isNil(block)) {
+        throw new UserError('When creating an admin level daily limit both alert and block must be provided')
+      }
+
+      if (!isValidNumber(alert)) throwRequiredValidNumberError('alert')
+
+      if (!isValidNumber(block)) throwRequiredValidNumberError('block')
+
       return new Promise((resolve, reject) => {
         this.db.run(
           `INSERT INTO ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} (level, category, alert, block) VALUES (?, ?, ?, ?)`,
