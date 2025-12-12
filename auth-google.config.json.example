@@ -5,6 +5,14 @@
       "clientSecret": "",
       "redirectUris": {
         "sso_auth" : "",
+      },
+      "mobile": {
+        "android": {
+          "clientId": ""
+        },
+        "ios": {
+          "clientId": ""
+        }
       }
     },
     "GOOGLE_WHITE_LIST_EMAILS" : [

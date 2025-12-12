@@ -111,6 +111,92 @@ class GoogleAuth extends DbBase {
     this.checkAdmAccessLevel = this.checkAdmAccessLevel.bind(this)
   }
 
+  /**
+   * Get all configured Google client entries (web client + mobile clients)
+   * @returns {{ entries: Object }}
+   */
+  _googleClientEntries () {
+    const { google = {} } = this.conf
+    const entries = {}
+
+    // Web client config (backward compatibility - single client setup)
+    if (google.clientId) {
+      entries.webClient = {
+        clientId: google.clientId,
+        clientSecret: google.clientSecret,
+        redirectUris: google.redirectUris
+      }
+    }
+
+    // Mobile clients config
+    if (google.mobile && typeof google.mobile === 'object') {
+      Object.entries(google.mobile).forEach(([key, value]) => {
+        if (value && value.clientId) {
+          entries[key] = value
+        }
+      })
+    }
+
+    return {
+      entries,
+    }
+  }
+
+  /**
+   * Get all configured client IDs for token audience validation
+   * @returns { string[] }
+   */
+  _googleClientIds () {
+    const { entries } = this._googleClientEntries()
+    return Object.values(entries)
+      .map(c => c.clientId)
+      .filter(Boolean)
+  }
+
+  /**
+   * Resolve which Google client config to use based on clientKey hint and/or token audience
+   * Security: Token audience (aud) is the source of truth - clientKey is just a hint
+   * @param {Object} opts
+   * @param {string|undefined} opts.clientKey - Optional hint from frontend (not trusted alone)
+   * @param {string|undefined} opts.tokenAud - Token audience from verified Google ID token (trusted)
+   * @returns {Object} Client config with clientId, clientSecret, redirectUris
+   * @throws {Error} AUTH_FAC_INVALID_GOOGLE_CLIENT if client not found or mismatch
+   */
+  _resolveGoogleClient ({ clientKey, tokenAud } = {}) {
+    const { entries } = this._googleClientEntries()
+
+    // Step 1: If we have token audience, use it as source of truth (most secure)
+    if (tokenAud) {
+      const matchedByAud = Object.keys(entries).find(key => entries[key]?.clientId === tokenAud)
+      
+      if (!matchedByAud) {
+        throw new Error('AUTH_FAC_INVALID_GOOGLE_CLIENT')
+      }
+
+      // If clientKey was provided, verify it matches the token's audience
+      if (clientKey && clientKey !== matchedByAud) {
+        throw new Error('AUTH_FAC_INVALID_GOOGLE_CLIENT')
+      }
+
+      return entries[matchedByAud]
+    }
+
+    // Step 2: If no token audience, use clientKey hint (for OAuth code exchange flows)
+    if (clientKey) {
+      if (!entries[clientKey]) {
+        throw new Error('AUTH_FAC_INVALID_GOOGLE_CLIENT')
+      }
+      return entries[clientKey]
+    }
+
+    // Step 3: Fallback to main client (backward compatibility)
+    if (entries.webClient) {
+      return entries.webClient
+    }
+
+    throw new Error('AUTH_FAC_INVALID_GOOGLE_CLIENT')
+  }
+
   _start (cb) {
     if (!this.conf.useDB) {
       return cb()
@@ -186,17 +272,19 @@ class GoogleAuth extends DbBase {
    * we use id token to get email and validate
    * @param {string} code
    * @param {'sso_auth'} redirectUriKey
+   * @param {string|undefined} clientKey - optional client key to use for the google client
    * @returns {Promise<TokenCredentials>}
    */
-  async getTokensFromCode (code, redirectUriKey) {
-    const oAuth2Client = this._getOAuth2Client(redirectUriKey)
+  async getTokensFromCode (code, redirectUriKey, clientKey) {
+    const oAuth2Client = this._getOAuth2Client({ clientKey, redirectUriKey })
     const { tokens } = await oAuth2Client.getToken(code)
     return tokens
   }
 
   async _loginAdminGoogle (params, ip, cb) {
+    const { clientKey } = params || {}
     try {
-      const email = await this.googleEmailFromToken(params)
+      const email = await this.googleEmailFromToken(params, clientKey)
       const { valid, level, extra } = await this._validAdminUserGoogleEmail(email)
       return (valid)
         ? this._createAdminToken(email, ip, level, extra, cb)
@@ -272,29 +360,65 @@ class GoogleAuth extends DbBase {
     return data && this.checkAdmAccessLevel(data.username, level)
   }
 
-  _getOAuth2Client (redirectUriKey = undefined) {
-    const { clientId, clientSecret, redirectUris } = this.conf.google
+  /**
+   * Create OAuth2 client for Google authentication
+   * Note: redirectUris are optional for mobile clients (they use ID tokens, not OAuth code flow)
+   * @param {Object} opts
+   * @param {string|undefined} opts.clientKey - Client key hint
+   * @param {string|undefined} opts.redirectUriKey - Redirect URI key (e.g., 'sso_auth') - only needed for web OAuth flows
+   * @param {string|undefined} opts.tokenAud - Token audience for validation
+   * @returns {google.auth.OAuth2}
+   */
+  _getOAuth2Client ({ clientKey, redirectUriKey, tokenAud } = {}) {
+    const { clientId, clientSecret, redirectUris } = this._resolveGoogleClient({
+      clientKey,
+      tokenAud
+    })
+    
+    // redirectUri is only needed for OAuth code exchange flows (web apps)
+    // Mobile apps don't need it since they use ID tokens directly
+    const redirectUri = redirectUriKey ? redirectUris?.[redirectUriKey] : undefined
+    
     return new google.auth.OAuth2(
       clientId,
       clientSecret,
-      redirectUriKey ? redirectUris[redirectUriKey] : undefined
+      redirectUri
     )
   }
 
   /**
-   * returns the user info from the google token based on the payload and scope expected profile and email
+   * Get user info from Google token (ID token or OAuth access token)
+   * For mobile apps: Uses ID token (credential) - validates audience automatically
+   * For web apps: Uses OAuth access token - requires clientKey for client selection
    * @param {{ credential: string, access_token: string, token_type: string, expires_in: number, id_token: string, scope: string }} payload
+   * @param {string|undefined} clientKey - Optional hint for client selection (validated against token audience)
    * @returns { Promise<Object> }
    */
-  async googleUserInfoFromToken (payload) {
-    const oAuth2Client = this._getOAuth2Client()
-
+  async googleUserInfoFromToken (payload, clientKey = undefined) {
+    // Mobile apps: ID token flow (credential field)
     if (payload?.credential) {
-      const ticket = await oAuth2Client.verifyIdToken({
-        idToken: payload.credential
+      const allowedAudiences = this._googleClientIds()
+      const verifier = new google.auth.OAuth2()
+      
+      // Verify ID token signature and validate audience
+      const ticket = await verifier.verifyIdToken({
+        idToken: payload.credential,
+        audience: allowedAudiences.length ? allowedAudiences : undefined
       })
-      return ticket.getPayload()
+      
+      const tokenPayload = ticket.getPayload()      
+      // Validate that token audience matches a configured client
+      // Also verify clientKey hint matches if provided
+      this._resolveGoogleClient({
+        clientKey,
+        tokenAud: tokenPayload?.aud
+      })
+
+      return tokenPayload
     }
+
+    // Web apps: OAuth access token flow
+    const oAuth2Client = this._getOAuth2Client({ clientKey })
     oAuth2Client.setCredentials(payload)
     const oauth2 = google.oauth2({ version: 'v2', auth: oAuth2Client })
 
@@ -309,10 +433,11 @@ class GoogleAuth extends DbBase {
   /**
    * returns the email from the google token based on the payload and scope at least email
    * @param {{ credential: string, access_token: string, token_type: string, expires_in: number, id_token: string, scope: string }} payload
+   * @param {string|undefined} clientKey - optional client key to use for the google client
    * @returns { Promise<string> }
    */
-  async googleEmailFromToken (payload) {
-    const userInfo = await this.googleUserInfoFromToken(payload)
+  async googleEmailFromToken (payload, clientKey = undefined) {
+    const userInfo = await this.googleUserInfoFromToken(payload, clientKey)
     return userInfo?.email
   }
 
