@@ -4,13 +4,26 @@
       "clientId": "",
       "clientSecret": "",
       "redirectUris": {
-        "sso_auth" : "",
+        "ssoAuth" : "",
+        "ssoAuthSettings": ""
       },
       "mobile": {
-        "android": {
+        "androidRc": {
           "clientId": ""
         },
-        "ios": {
+        "androidProd": {
+          "clientId": ""
+        },
+        "androidRedesign": {
+          "clientId": ""
+        },
+        "iosProd": {
+          "clientId": ""
+        },
+        "iosRc": {
+          "clientId": ""
+        },
+        "iosRedesign": {
           "clientId": ""
         }
       }

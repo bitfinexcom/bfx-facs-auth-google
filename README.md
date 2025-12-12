@@ -43,7 +43,7 @@
 
 ### Selecting the right client
 - **Security**: Token `aud` (audience) is the source of truth - `clientKey` is just a hint
-- `clientKey` (optional) can be sent by frontend/mobile to indicate which client to use (e.g. `android_prod`)
+- `clientKey` (optional) can be sent by frontend/mobile to indicate which client to use (e.g. `androidProd`)
 - The backend validates the Google token's `aud` field and maps it to a configured client ID
 - If `clientKey` is provided, it must match the token's `aud` - otherwise request is rejected
 - Resolution order: `aud` match → `clientKey` → `webClient` (from root `google.clientId`)

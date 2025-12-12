@@ -138,7 +138,7 @@ class GoogleAuth extends DbBase {
     }
 
     return {
-      entries,
+      entries
     }
   }
 
@@ -271,7 +271,7 @@ class GoogleAuth extends DbBase {
    * this is used to validate code generated from google sso to fetch access token, id token
    * we use id token to get email and validate
    * @param {string} code
-   * @param {'sso_auth'} redirectUriKey
+   * @param {string} redirectUriKey - the redirect uri key to use for the google client
    * @param {string|undefined} clientKey - optional client key to use for the google client
    * @returns {Promise<TokenCredentials>}
    */
@@ -365,7 +365,7 @@ class GoogleAuth extends DbBase {
    * Note: redirectUris are optional for mobile clients (they use ID tokens, not OAuth code flow)
    * @param {Object} opts
    * @param {string|undefined} opts.clientKey - Client key hint
-   * @param {string|undefined} opts.redirectUriKey - Redirect URI key (e.g., 'sso_auth') - only needed for web OAuth flows
+   * @param {string|undefined} opts.redirectUriKey - Redirect URI key (e.g., 'ssoAuth') - only needed for web OAuth flows
    * @param {string|undefined} opts.tokenAud - Token audience for validation
    * @returns {google.auth.OAuth2}
    */
@@ -403,7 +403,7 @@ class GoogleAuth extends DbBase {
       // Verify ID token signature and validate audience
       const ticket = await verifier.verifyIdToken({
         idToken: payload.credential,
-        audience: allowedAudiences.length ? allowedAudiences : undefined
+        ...(allowedAudiences.length > 0 && { audience: allowedAudiences })
       })
       
       const tokenPayload = ticket.getPayload()      
