@@ -168,7 +168,7 @@ class GoogleAuth extends DbBase {
     // Step 1: If we have token audience, use it as source of truth (most secure)
     if (tokenAud) {
       const matchedByAud = Object.keys(entries).find(key => entries[key]?.clientId === tokenAud)
-      
+
       if (!matchedByAud) {
         throw new Error('AUTH_FAC_INVALID_GOOGLE_CLIENT')
       }
@@ -374,11 +374,11 @@ class GoogleAuth extends DbBase {
       clientKey,
       tokenAud
     })
-    
+
     // redirectUri is only needed for OAuth code exchange flows (web apps)
     // Mobile apps don't need it since they use ID tokens directly
     const redirectUri = redirectUriKey ? redirectUris?.[redirectUriKey] : undefined
-    
+
     return new google.auth.OAuth2(
       clientId,
       clientSecret,
@@ -399,19 +399,24 @@ class GoogleAuth extends DbBase {
     if (payload?.credential) {
       const allowedAudiences = this._googleClientIds()
       const verifier = new google.auth.OAuth2()
-      
+
       // Verify ID token signature and validate audience
       const ticket = await verifier.verifyIdToken({
         idToken: payload.credential,
         ...(allowedAudiences.length > 0 && { audience: allowedAudiences })
       })
-      
-      const tokenPayload = ticket.getPayload()      
+
+      const tokenPayload = ticket.getPayload()
+
+      if (!tokenPayload?.aud) {
+        throw new Error('AUTH_FAC_INVALID_GOOGLE_TOKEN')
+      }
+
       // Validate that token audience matches a configured client
       // Also verify clientKey hint matches if provided
       this._resolveGoogleClient({
         clientKey,
-        tokenAud: tokenPayload?.aud
+        tokenAud: tokenPayload.aud
       })
 
       return tokenPayload
