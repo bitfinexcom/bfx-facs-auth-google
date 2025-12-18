@@ -4,7 +4,28 @@
       "clientId": "",
       "clientSecret": "",
       "redirectUris": {
-        "sso_auth" : "",
+        "ssoAuth" : "",
+        "ssoAuthSettings": ""
+      },
+      "mobile": {
+        "androidRc": {
+          "clientId": ""
+        },
+        "androidProd": {
+          "clientId": ""
+        },
+        "androidRedesign": {
+          "clientId": ""
+        },
+        "iosProd": {
+          "clientId": ""
+        },
+        "iosRc": {
+          "clientId": ""
+        },
+        "iosRedesign": {
+          "clientId": ""
+        }
       }
     },
     "GOOGLE_WHITE_LIST_EMAILS" : [
