@@ -657,11 +657,13 @@ class GoogleAuth extends DbBase {
   }
 
   /**
-   * @param { string } email
-   * @returns { BaseAdminT & { timestamp: Date, active: boolean } }
+   * @param { string|number } emailOrId - Identifier used for searching the admin, it can be either the admin email address or its database id.
+   * @param { boolean } [active=true] - Flag for considering only the active users, it is `true` by default. If `false`, it will search through inactive users too.
+   * @param { boolean } [id=false] - Flag for searching as well by id criterion, it's `false` by default. If `true`, enables the mentioned behavior.
+   * @returns { Promise<BaseAdminT & { timestamp: Date, active: boolean }> }
    */
-  async getAdmin (email, active = true) {
-    const admin = await this._getAdmin(email, active)
+  async getAdmin (emailOrId, active = true, id = false) {
+    const admin = await this._getAdmin(emailOrId, active, id)
     const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
       'analyticsPrivilege', 'manageAdminsPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD]
 
@@ -674,21 +676,30 @@ class GoogleAuth extends DbBase {
       : admin
   }
 
-  async _getAdmin (email, active = true) {
-    if (!email) return false
+  async _getAdmin (emailOrId, active = true, id = false) {
+    if (!emailOrId) return false
 
     return this.conf.useDB
-      ? this._getAdminFromDB(email, active)
-      : this._getAdminFromConfig(email)
+      ? this._getAdminFromDB(emailOrId, active, id)
+      : this._getAdminFromConfig(emailOrId)
   }
 
-  async _getAdminFromDB (email, active) {
+  async _getAdminFromDB (emailOrId, active, id) {
     return new Promise((resolve, reject) => {
-      const query = active
-        ? `SELECT * FROM ${tableName} WHERE LOWER(email) = ? AND active = 1`
-        : `SELECT * FROM ${tableName} WHERE LOWER(email) = ?`
+      const identifierCondition = id
+        ? '(LOWER(email) = ? OR id = ?)'
+        : 'LOWER(email) = ?'
 
-      this.db.get(query, [email.toLowerCase()], (err, row) => {
+      const query = active
+        ? `SELECT * FROM ${tableName} WHERE ${identifierCondition} AND active = 1`
+        : `SELECT * FROM ${tableName} WHERE ${identifierCondition}`
+
+      const params = [String(emailOrId).toLowerCase()]
+      if (id) {
+        params.push(emailOrId)
+      }
+
+      this.db.get(query, params, (err, row) => {
         if (err) return reject(err)
         resolve(row)
       })

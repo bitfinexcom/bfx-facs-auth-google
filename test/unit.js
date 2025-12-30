@@ -59,6 +59,65 @@ describe('forms field', () => {
     assert.deepEqual(res.forms, testForms)
   })
 
+  describe('getAdmin', () => {
+    const adminPayload = {
+      email: testAdminEmail,
+      password: 'test123',
+      level: 0
+    }
+
+    const hasJustBeenCreated = payload => assert.ok(Date.now() - new Date(payload.timestamp) < 1000)
+
+    const assertions = (getAdminResult, expectedActive = true) => {
+      assert.equal(getAdminResult.email, adminPayload.email)
+      assert.equal(getAdminResult.level, adminPayload.level)
+      assert.equal(getAdminResult.active, expectedActive)
+      hasJustBeenCreated(getAdminResult)
+    }
+
+    it('should get active admin', async () => {
+      await authGoogle.addAdmin(adminPayload)
+
+      const getAdminResult = await authGoogle.getAdmin(adminPayload.email)
+
+      assertions(getAdminResult)
+    })
+
+    it('should not get inactive admin', async () => {
+      await authGoogle.addAdmin(adminPayload)
+      await authGoogle.updateAdmin(adminPayload.email, { active: false })
+
+      const getAdminResult = await authGoogle.getAdmin(adminPayload.email)
+
+      assert.equal(getAdminResult, undefined)
+    })
+
+    it('should get inactive admin', async () => {
+      await authGoogle.addAdmin(adminPayload)
+      await authGoogle.updateAdmin(adminPayload.email, { active: false })
+
+      const getAdminResult = await authGoogle.getAdmin(adminPayload.email, false)
+
+      assertions(getAdminResult, false)
+    })
+
+    it('should get admin using uppercased email', async () => {
+      await authGoogle.addAdmin(adminPayload)
+
+      const getAdminResult = await authGoogle.getAdmin(adminPayload.email.toUpperCase())
+
+      assertions(getAdminResult)
+    })
+
+    it('should get admin using id', async () => {
+      const adminCreationResult = await authGoogle.addAdmin(adminPayload)
+
+      const getAdminResult = await authGoogle.getAdmin(adminCreationResult.id, true, true)
+
+      assertions(getAdminResult)
+    })
+  })
+
   describe('fetchMotivationsPrivilege permission', () => {
     it('should add admin successfully with fetchMotivationsPrivilege', async () => {
       await authGoogle.addAdmin({
