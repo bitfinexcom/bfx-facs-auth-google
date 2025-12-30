@@ -11,8 +11,7 @@ const uuidv4 = require('uuid/v4')
 const { google } = require('googleapis')
 const { UserError } = require('./errors')
 const migrations = require('./migrations')
-const { cloneDeep, isNil, pick } = require('@bitfinexcom/lib-js-util-base')
-const { VALID_DAILY_LIMIT_CATEGORIES, MIN_ADMIN_LEVEL, DB_TABLES, MAX_ADMIN_LEVEL } = require('./shared')
+const { cloneDeep } = require('@bitfinexcom/lib-js-util-base')
 
 const FORMS_FIELD = 'forms'
 
@@ -37,14 +36,8 @@ async function verify (password, hash) {
   })
 }
 
-const tableName = DB_TABLES.ADMIN_USERS
+const tableName = 'admin_users'
 /**
- * @typedef {('opened'|'displayed')} DailyLimitCategory
- * @typedef {{
- *  alert: number
- *  block: number
- * }} DailyLimitConfig
- * @typedef {Record<DailyLimitCategory, DailyLimitConfig>} DailyLimitConfigsByCategory
  * @typedef {{
  *  email: string,
  *  level: number,
@@ -56,8 +49,7 @@ const tableName = DB_TABLES.ADMIN_USERS
  *  passwordResetToken?: string,
  *  passwordResetSentAt?: Date,
  *  company?: string,
- *  forms?: string[],
- *  dailyLimitConfig?: DailyLimitConfigsByCategory
+ *  forms?: string[]
  * }} BaseAdminT
  * @typedef { BaseAdminT & { password: string }} AddAdminT
  * @typedef { BaseAdminT & {
@@ -83,9 +75,6 @@ const tableName = DB_TABLES.ADMIN_USERS
  *  token: string,
  *  expires_at: Date
  * }} LoginResp
- * @typedef {DailyLimitConfigsByCategory} AdminLevelDailyLimitConfigsByCategory
- * @typedef {(0|1|2|3|4)} AdminLevel
- * @typedef {Record<AdminLevel, DailyLimitConfig>} AdminLevelDailyLimitConfigsByAdminLevel
  */
 class GoogleAuth extends DbBase {
   constructor (caller, opts = {}, ctx) {
@@ -375,8 +364,7 @@ class GoogleAuth extends DbBase {
       analyticsPrivilege,
       manageAdminsPrivilege,
       fetchMotivationsPrivilege,
-      company,
-      dailyLimitConfig
+      company
     } = user
 
     assert.ok(typeof email === 'string', 'Email is required')
@@ -410,8 +398,6 @@ class GoogleAuth extends DbBase {
       assert.ok(typeof company === 'string', 'company should be a string')
     }
 
-    this._validateDailyLimitConfig(dailyLimitConfig)
-
     const adm = await this._getAdmin(email, false)
     if (adm) throw new UserError('ADMIN_ACCOUNT_EXISTS')
 
@@ -421,12 +407,12 @@ class GoogleAuth extends DbBase {
 
     user.password = hashedPassword
 
-    const createdUser = await new Promise((resolve, reject) => {
-      const keys = this._getUserObjectKeysMatchingTableColumns(user)
+    return new Promise((resolve, reject) => {
+      const keys = Object.keys(user)
 
       this.db.run(
         `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${Array(keys.length).fill('?').join(', ')})`,
-        this._convertUserObjectToValuesArray(user),
+        keys.map(key => key === FORMS_FIELD ? JSON.stringify(user[key]) : user[key]),
         function (err) {
           if (err) return reject(err)
 
@@ -445,13 +431,6 @@ class GoogleAuth extends DbBase {
         }
       )
     })
-
-    if (dailyLimitConfig) {
-      await this._insertIntoAdminUserDailyLimits(dailyLimitConfig, createdUser.id)
-      createdUser.dailyLimitConfig = dailyLimitConfig
-    }
-
-    return createdUser
   }
 
   async updateAdmin (email, user) {
@@ -466,8 +445,7 @@ class GoogleAuth extends DbBase {
       manageAdminsPrivilege,
       fetchMotivationsPrivilege,
       company,
-      active,
-      dailyLimitConfig
+      active
     } = user
 
     assert.ok(typeof email === 'string', 'Email is required')
@@ -512,19 +490,15 @@ class GoogleAuth extends DbBase {
       assert.ok(typeof active === 'boolean', 'active should be a boolean')
     }
 
-    this._validateDailyLimitConfig(dailyLimitConfig)
+    const adm = await this._getAdmin(email, !active)
+    if (!adm) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
 
-    const adm = await this._getAdminOrThrowError(email, !active)
-
-    const updatedUser = await new Promise((resolve, reject) => {
-      const keys = this._getUserObjectKeysMatchingTableColumns(user)
-
-      // if no fields are detected for update, then just resolve to an empty object
-      if (keys.length === 0) resolve({})
+    return new Promise((resolve, reject) => {
+      const keys = Object.keys(user)
 
       this.db.run(
         `UPDATE ${tableName} SET ${keys.join(' = ?, ')} = ? WHERE id = ?`,
-        this._convertUserObjectToValuesArray(user).concat(adm.id),
+        keys.map(key => user[key]).concat(adm.id),
         function (err) {
           if (err) return reject(err)
 
@@ -532,92 +506,6 @@ class GoogleAuth extends DbBase {
         }
       )
     })
-
-    if (dailyLimitConfig) {
-      await this._insertIntoAdminUserDailyLimits(dailyLimitConfig, adm.id, true)
-      updatedUser.dailyLimitConfig = dailyLimitConfig
-    }
-
-    return updatedUser
-  }
-
-  /**
-   * Run queries against database where one or more records are upserted into the admin user daily limits table.
-   * @param {DailyLimitConfig} dailyLimitConfig - Object containing the information of records to be inserted/updated.
-   * @param {Number} adminUserId - Primary ID of the user associated to the daily limit records to be inserted/updated.
-   * @param {boolean} [checkConflict=false] - Used for enabling checking on existence of the admin user daily limit records in the database.
-   * For each record that's detected, an upsert-like operation instead of a pure insert is executed.
-   */
-  async _insertIntoAdminUserDailyLimits (dailyLimitConfig, adminUserId, checkConflict = false) {
-    return Promise.all(
-      Object.keys(dailyLimitConfig).map((category) => {
-        return new Promise((resolve, reject) => {
-          const { alert, block } = dailyLimitConfig[category]
-          this.db.run(
-            `
-              INSERT INTO ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} (admin_id, category, alert, block) VALUES (?, ?, ?, ?)
-                ${checkConflict ? 'ON CONFLICT (admin_id, category) DO UPDATE SET alert = ?, block = ?' : ''}
-            `,
-            [adminUserId, category, alert, block].concat(checkConflict ? [alert, block] : []),
-            function (err) {
-              if (err) return reject(err)
-              resolve({ category, alert, block })
-            }
-          )
-        })
-      })
-    )
-  }
-
-  /**
-   * This private method converts an array containing daily limit elements to an object
-   * @param {{ level?: number; category?: DailyLimitCategory, alert: number, block: number }[]} dailyLimitsArr - The array containing the daily limits objects
-   * @param {'level'|'category'} fieldToReduceBy - The name of the field to use its values as keys for the generated object.
-   * @returns {DailyLimitConfigsByCategory} The object generated from iterating through the `dailyLimitsArr`
-   */
-  _convertDailyLimitsArrayToObject (dailyLimitsArr, fieldToReduceBy) {
-    return dailyLimitsArr.reduce((acc, curr) => {
-      acc[curr[fieldToReduceBy]] = pick(curr, ['alert', 'block'])
-      return acc
-    }, {})
-  }
-
-  /**
-   * Evaluates if a given value is a DailyLimitConfig object
-   * @param {DailyLimitConfig | undefined | null} dailyLimitConfig - Value to check if, in case is not `nil`, has the correc structure for being a DailyLimitConfig
-   * @throws {assert.AssertionError} If the value to be evaluated is not a DailyLimitConfig object
-   */
-  _validateDailyLimitConfig (dailyLimitConfig) {
-    if (!isNil(dailyLimitConfig)) {
-      assert.ok(
-        (
-          typeof dailyLimitConfig === 'object' &&
-          Object.keys(dailyLimitConfig).every(k => VALID_DAILY_LIMIT_CATEGORIES.some(c => c === k)) &&
-          Object.values(dailyLimitConfig).every(v => (Number.isInteger(v.alert) && v.alert >= 0 && Number.isInteger(v.block) && v.block >= 0))
-        ),
-        'dailyLimitConfig must be a DailyLimitConfigsByCategory object'
-      )
-    }
-  }
-
-  /**
-   * Serializes user object values into a one level array of primitive values
-   * @param {BaseAdminT} user - User object to be serialized in an array of primitive values so they can be used in SQL insert/update operations
-   * @returns {Array<string|number|boolean|undefined|Date>} Serialized values
-   */
-  _convertUserObjectToValuesArray (user) {
-    const keys = this._getUserObjectKeysMatchingTableColumns(user)
-    return keys.map(key => key === FORMS_FIELD ? JSON.stringify(user[key]) : user[key])
-  }
-
-  /**
-   * Returns all the user object keys that match any existing column in the corresponding table in the database
-   * @param {BaseAdminT} user - User object to retrieve the keys from
-   * @returns {string[]} The keys of the user object that also exist as columns in the database table
-   */
-  _getUserObjectKeysMatchingTableColumns (user) {
-    const shouldExclude = ['dailyLimitConfig']
-    return Object.keys(user).filter(k => !shouldExclude.some(se => se === k))
   }
 
   async updateAdminPassword (email, newPassword, oldPassword) {
@@ -627,7 +515,8 @@ class GoogleAuth extends DbBase {
     assert.ok(typeof newPassword === 'string', 'New Password is required')
     assert.ok(typeof oldPassword === 'string', 'Old Password is required')
 
-    const adm = await this._getAdminOrThrowError(email)
+    const adm = await this._getAdmin(email)
+    if (!adm) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
 
     if (!(await verify(oldPassword, adm.password))) {
       throw new UserError('INVALID_PASSWORD')
@@ -774,28 +663,15 @@ class GoogleAuth extends DbBase {
   async getAdmin (email, active = true) {
     const admin = await this._getAdmin(email, active)
     const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
-      'analyticsPrivilege', 'manageAdminsPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', 'dailyLimitConfig', FORMS_FIELD]
+      'analyticsPrivilege', 'manageAdminsPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD]
 
     if (this.conf.useDB && admin && admin[FORMS_FIELD]) {
       admin[FORMS_FIELD] = JSON.parse(admin[FORMS_FIELD])
     }
 
     return admin
-      ? pick(admin, displayKeys)
+      ? _.pick(admin, displayKeys)
       : admin
-  }
-
-  /**
-   * Retrieves admin given an email address.
-   * @param {string} email - Email address of the admin to be retrieved.
-   * @param {boolean} [active = true] -  Flag to be used in case we want to fetch the admin regardless of being active or not.
-   * @throws {UserError} If no admin is found, this exception is thrown.
-   * @returns {BaseAdminT} The admin user object, if no error has been thrown.
-   */
-  async _getAdminOrThrowError (email, active = true) {
-    const admin = await this._getAdmin(email, active)
-    if (!admin) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
-    return admin
   }
 
   async _getAdmin (email, active = true) {
@@ -807,7 +683,7 @@ class GoogleAuth extends DbBase {
   }
 
   async _getAdminFromDB (email, active) {
-    const admin = await new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const query = active
         ? `SELECT * FROM ${tableName} WHERE LOWER(email) = ? AND active = 1`
         : `SELECT * FROM ${tableName} WHERE LOWER(email) = ?`
@@ -817,19 +693,6 @@ class GoogleAuth extends DbBase {
         resolve(row)
       })
     })
-    if (admin) {
-      admin.dailyLimitConfig = await new Promise((resolve, reject) => {
-        this.db.all(`SELECT category, alert, block FROM ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} WHERE admin_id = ?`, [admin.id], (err, rows) => {
-          if (err) return reject(err)
-          const dailyLimits = rows || []
-
-          if (dailyLimits.length === 0) resolve(null)
-
-          resolve(this._convertDailyLimitsArrayToObject(dailyLimits, 'category'))
-        })
-      })
-    }
-    return admin
   }
 
   _getAdminFromConfig (email) {
@@ -886,246 +749,6 @@ class GoogleAuth extends DbBase {
   async hasPassword (email) {
     const admin = await this._getAdmin(email)
     return !!admin?.password
-  }
-
-  /**
-   * Creates or update a daily limit configuration for a given combination of admin level and daily limit category
-   * @param {number} level - The admin level
-   * @param {DailyLimitCategory} category - The daily limit category
-   * @param {DailyLimitConfig} config - The configuration values for the admin level and category daily limit
-   * @throws {UserError} In the following cases:
-   * - admin level is not integer or it's not between 0 and 4 inclusive
-   * - category is neither `opened` nor `displayed`
-   * - `config.alert` and `config.block` are not provided, or at least one of them is provided but not integer or it's integer but not positive
-   * - the daily limit for the given admin level and category exists but `config.alert` and `config.block` are not provided
-   * @returns {Promise<boolean>} Resolves to `true` if daily limit configuration is created/updated successfully. Otherwise, triggers a rejection.
-   */
-  async setAdminLevelDailyLimit (level, category, config) {
-    this._validateAdminLevel(level)
-    this._validateDailyLimitCategory(category)
-
-    const { alert, block } = config ?? {}
-
-    if (isNil(alert) && isNil(block)) {
-      throw new UserError('Neither alert nor block values are provided')
-    }
-
-    const shouldUpdate = Boolean(await this.getAdminLevelDailyLimit(level, category))
-
-    const isValidNumber = n => Number.isInteger(n) && n >= 0
-
-    const throwRequiredValidNumberError = fieldName => {
-      throw new UserError(`When ${fieldName} value is provided, must be integer and greater or equal to zero`)
-    }
-
-    const cb = (resolve, reject) => (err) => {
-      if (err) return reject(err)
-      resolve(true)
-    }
-
-    if (shouldUpdate) {
-      if (!isNil(alert) && !isValidNumber(alert)) throwRequiredValidNumberError('alert')
-
-      if (!isNil(block) && !isValidNumber(block)) throwRequiredValidNumberError('block')
-
-      const valuesToUpdate = {}
-
-      if (!isNil(alert)) valuesToUpdate.alert = alert
-      if (!isNil(block)) valuesToUpdate.block = block
-
-      const fields = Object.keys(valuesToUpdate)
-
-      return new Promise((resolve, reject) => {
-        this.db.run(
-          `UPDATE ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} SET ${fields.join(' = ?, ')} = ? WHERE level = ? AND category = ?`,
-          Object.values(valuesToUpdate).concat([level, category]),
-          cb(resolve, reject)
-        )
-      })
-    } else {
-      if (isNil(alert) || isNil(block)) {
-        throw new UserError('When creating an admin level daily limit both alert and block must be provided')
-      }
-
-      if (!isValidNumber(alert)) throwRequiredValidNumberError('alert')
-
-      if (!isValidNumber(block)) throwRequiredValidNumberError('block')
-
-      return new Promise((resolve, reject) => {
-        this.db.run(
-          `INSERT INTO ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} (level, category, alert, block) VALUES (?, ?, ?, ?)`,
-          [level, category, alert, block],
-          cb(resolve, reject)
-        )
-      })
-    }
-  }
-
-  /**
-   * Remove all daily limits records associated to an admin level
-   * @param {AdminLevel} level - The admin level value that we want to remove all its daily limit records from
-   * @throws {UserError} In the following cases:
-   * - admin level is not integer or it's not between 0 and 4 inclusive
-   * @returns {Promise<boolean>} Resolves to `true` in case we remove all the records successfully. Throws an error in case something goes wrong.
-   */
-  async removeAdminLevelDailyLimits (level) {
-    this._validateAdminLevel(level)
-    return new Promise((resolve, reject) => {
-      this.db.serialize(() => {
-        const statement = this.db.prepare(`DELETE FROM ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} WHERE level = ?`)
-        statement.run([level])
-        statement.finalize(err => {
-          if (err) return reject(err)
-          resolve(true)
-        })
-      })
-    })
-  }
-
-  /**
-   * Retrieves a daily limit config associated to an admin level and a daily limit category
-   * @param {number} level - The admin level
-   * @param {DailyLimitCategory} category - The daily limit category
-   * @throws {UserError} In the following cases:
-   * - admin level is not integer or it's not between 0 and 4 inclusive
-   * - category is neither `opened` nor `displayed`
-   * @returns {Promise<DailyLimitConfig | null>} Resolves to a `DailyLimitConfig` object if there is a daily limit associated to the provided admin level and category, or null if there is nothing saved yet in the database. Otherwise, triggers a rejection.
-   */
-  async getAdminLevelDailyLimit (level, category) {
-    this._validateAdminLevel(level)
-    this._validateDailyLimitCategory(category)
-
-    return new Promise((resolve, reject) => {
-      this.db.get(
-        `SELECT alert, block FROM ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} WHERE level = ? AND category = ? LIMIT 1`,
-        [level, category],
-        function (err, row) {
-          if (err) return reject(err)
-          resolve(row || null)
-        }
-      )
-    })
-  }
-
-  /**
-   * Retrieves all daily limit records associated to a given admin level
-   * @param {number} level - The admin level
-   * @throws {UserError} In the following cases:
-   * - admin level is not integer or it's not between 0 and 4 inclusive
-   * @returns {Promise<AdminLevelDailyLimitConfigsByCategory | null>} Resolves to a `AdminLevelDailyLimitConfigsByCategory` object. If an error is detected, triggers an exception.
-   */
-  async getDailyLimitsByAdminLevel (level) {
-    this._validateAdminLevel(level)
-
-    return new Promise((resolve, reject) => {
-      this.db.all(
-        `SELECT category, alert, block FROM ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} WHERE level = ?`,
-        [level],
-        (err, rows) => {
-          if (err) return reject(err)
-          if (!rows?.length) resolve(null)
-          resolve(this._convertDailyLimitsArrayToObject(rows, 'category'))
-        }
-      )
-    })
-  }
-
-  /**
-   * Retrieves all daily limit records associated to a given category
-   * @param {DailyLimitCategory} category - The daily limit category
-   * @throws {UserError} In the following cases:
-   * - category is neither `opened` nor `displayed`
-   * @returns {Promise<AdminLevelDailyLimitConfigsByAdminLevel>} Resolves to a `AdminLevelDailyLimitConfigsByAdminLevel` object. If an error is detected, triggers an exception.
-   */
-  async getDailyLimitsByCategory (category) {
-    this._validateDailyLimitCategory(category)
-
-    return new Promise((resolve, reject) => {
-      this.db.all(
-        `SELECT level, alert, block FROM ${DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS} WHERE category = ?`,
-        [category],
-        (err, rows) => {
-          if (err) return reject(err)
-          resolve(this._convertDailyLimitsArrayToObject(rows ?? [], 'level'))
-        }
-      )
-    })
-  }
-
-  /**
-   * Guard method for validating a given number is a valid admin level
-   * @param {number} level - Value representing the admin level to evaluate
-   * @throws {UserError} If `level` is not a valid `AdminLevel`
-   */
-  _validateAdminLevel (level) {
-    if (!Number.isInteger(level) || !_.inRange(level, MIN_ADMIN_LEVEL, MAX_ADMIN_LEVEL + 1)) {
-      throw new UserError(`"${level}" as admin level is invalid`)
-    }
-  }
-
-  /**
-   * Guard method for validating a given string is a valid daily limit category
-   * @param {string} category - Value representing the daily limit category to evaluate
-   * @throws {UserError} If `category` is not a valid `DailyLimitCategory`
-   */
-  _validateDailyLimitCategory (category) {
-    if (!VALID_DAILY_LIMIT_CATEGORIES.some(c => c === category)) {
-      throw new UserError(`"${category}" as daily limit category value is invalid`)
-    }
-  }
-
-  /**
-   * Retrieves the daily limit config associated to an admin
-   * @param {string} adminUserEmail - The email address associated to the admin.
-   * @param {boolean} [shouldFallbackToAdminLevelDailyLimits=true] - When admin user does not have associated any daily limit config, we fallback to use
-   * the daily limits associated to the admin level. By using this flag as `false`, we should disable that behavior.
-   * @throws {UserError} If no admin associated to the provided email address is found, this exception is thrown.
-   * @returns {DailyLimitConfigsByCategory|null} Returns the fully fleshed daily limit config object associated to the admin.
-   * If it hasn't been set yet, then returns the daily limit config object associated to the admin level. If this does not exist
-   * either then return `null`.
-   */
-  async getAdminUserDailyLimitConfig (adminUserEmail, shouldFallbackToAdminLevelDailyLimits = true) {
-    const admin = await this.getAdmin(adminUserEmail)
-    if (!admin) return null
-
-    const dailyLimits = admin.dailyLimitConfig
-    if (dailyLimits && Object.keys(dailyLimits).length) return dailyLimits
-
-    return shouldFallbackToAdminLevelDailyLimits ? this.getDailyLimitsByAdminLevel(admin.level) : null
-  }
-
-  /**
-   * Removes the daily limit config associated to an admin.
-   * @param {string} adminUserEmail - The email address associated to the admin.
-   * @throws {UserError} If no admin associated to the provided email address is found, this exception is thrown.
-   * @returns {Promise<boolean>} Resolves to `true` if daily limit configuration is removed successfully. Otherwise, triggers a rejection.
-   */
-  async removeAdminUserDailyLimitConfig (adminUserEmail) {
-    const adm = await this._getAdminOrThrowError(adminUserEmail)
-    return new Promise((resolve, reject) => {
-      this.db.serialize(() => {
-        const statement = this.db.prepare(`DELETE FROM ${DB_TABLES.ADMIN_USER_DAILY_LIMITS} WHERE admin_id = ?`)
-        statement.run([adm.id])
-        statement.finalize(err => {
-          if (err) return reject(err)
-          resolve(true)
-        })
-      })
-    })
-  }
-
-  /**
-   * Verify that is stored at least one daily limit record associated either to any admin user or admin level
-   * @returns {Boolean} The result of the verification
-   */
-  async areDailyLimitsPopulated () {
-    const queryTableIsPopulated = async (table) => new Promise((resolve, reject) => {
-      this.db.get(`SELECT * FROM ${table} LIMIT 1`, (err, row) => {
-        if (err) return reject(err)
-        resolve(Boolean(row))
-      })
-    })
-    return ((await queryTableIsPopulated(DB_TABLES.ADMIN_USER_DAILY_LIMITS)) || ((await queryTableIsPopulated(DB_TABLES.ADMIN_LEVEL_DAILY_LIMITS))))
   }
 }
 
