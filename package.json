@@ -1,5 +1,5 @@
 {
-  "name": "bfx-facs-auth-google",
+  "name": "@bitfinex/bfx-facs-auth-google",
   "version": "1.2.3",
   "private": false,
   "description": "Bitfinex Google Oauth Facility",
@@ -12,16 +12,16 @@
     "oath"
   ],
   "dependencies": {
+    "@bitfinex/bfx-facs-base": "git+https://github.com/bitfinexcom/bfx-facs-base.git",
+    "@bitfinex/bfx-facs-db-sqlite": "git+https://github.com/bitfinexcom/bfx-facs-db-sqlite.git",
     "@bitfinexcom/lib-js-util-base": "git+https://github.com/bitfinexcom/lib-js-util-base.git",
     "async": "^2.6.4",
-    "bfx-facs-base": "git+https://github.com/bitfinexcom/bfx-facs-base.git",
-    "bfx-facs-db-sqlite": "git+https://github.com/bitfinexcom/bfx-facs-db-sqlite.git",
     "googleapis": "^68.0.0",
     "lodash": "^4.17.21",
     "uuid": "^3.2.1"
   },
   "engine": {
-    "node": ">=8.0"
+    "node": ">=16.0"
   },
   "main": "index.js",
   "license": "Apache-2.0",
