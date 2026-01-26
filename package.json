@@ -20,7 +20,7 @@
     "lodash": "^4.17.21",
     "uuid": "^3.2.1"
   },
-  "engine": {
+  "engines": {
     "node": ">=16.0"
   },
   "main": "index.js",
