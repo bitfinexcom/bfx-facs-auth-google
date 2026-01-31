@@ -6,12 +6,12 @@ const assert = require('assert')
 const _ = require('lodash')
 const async = require('async')
 const crypto = require('crypto')
-const DbBase = require('bfx-facs-db-sqlite')
+const DbBase = require('@bitfinex/bfx-facs-db-sqlite')
 const uuidv4 = require('uuid/v4')
 const { google } = require('googleapis')
 const { UserError } = require('./errors')
 const migrations = require('./migrations')
-const { cloneDeep } = require('@bitfinexcom/lib-js-util-base')
+const { cloneDeep } = require('@bitfinex/lib-js-util-base')
 
 const FORMS_FIELD = 'forms'
 
