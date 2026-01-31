@@ -9,7 +9,7 @@ const path = require('path')
 const conf = require('./config/facs/auth-google.config')
 
 const AuthGoogle = require('../')
-const { omit } = require('@bitfinexcom/lib-js-util-base')
+const { omit } = require('@bitfinex/lib-js-util-base')
 
 const dbPath = path.join(__dirname, './db/')
 const ctx = { root: './test' }
