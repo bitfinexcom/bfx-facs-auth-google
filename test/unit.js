@@ -59,6 +59,18 @@ describe('forms field', () => {
     assert.deepEqual(res.forms, testForms)
   })
 
+  describe('loginAdmin', () => {
+    it('should pass error AUTH_FAC_ACCOUNT_IS_NOT_VALID to callback when internal validation of google auth credentials throws an exception', async () => {
+      let errMsg = null
+      const args = { google: { credential: 'invalid credential' } }
+      const cb = (e) => {
+        errMsg = e.message
+      }
+      await authGoogle.loginAdmin(args, cb)
+      assert.strictEqual(errMsg, 'AUTH_FAC_ACCOUNT_IS_NOT_VALID')
+    }).timeout(5000)
+  })
+
   describe('getAdmin', () => {
     const adminPayload = {
       email: testAdminEmail,

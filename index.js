@@ -292,7 +292,7 @@ class GoogleAuth extends DbBase {
         : cb(new Error('AUTH_FAC_ACCOUNT_IS_NOT_VALID'))
     } catch (e) {
       console.log(e)
-      cb(new Error('AUTH_FAC_INCORRECT_GOOGLE_TOKEN'))
+      cb(new Error('AUTH_FAC_ACCOUNT_IS_NOT_VALID'))
     }
   }
 
