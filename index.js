@@ -45,6 +45,7 @@ const tableName = 'admin_users'
  *  blockPrivilege?: boolean,
  *  analyticsPrivilege?: boolean,
  *  manageAdminsPrivilege?: boolean,
+ *  casesPrivilege?: boolean,
  *  fetchMotivationsPrivilege?: boolean,
  *  passwordResetToken?: string,
  *  passwordResetSentAt?: Date,
@@ -91,6 +92,7 @@ class GoogleAuth extends DbBase {
         blockPrivilege TINYINTEGER,
         analyticsPrivilege TINYINTEGER,
         manageAdminsPrivilege TINYINTEGER,
+        casesPrivilege TINYINTEGER,
         passwordResetToken TEXT,
         passwordResetSentAt DATETIME,
         company TEXT,
@@ -495,6 +497,7 @@ class GoogleAuth extends DbBase {
       blockPrivilege,
       analyticsPrivilege,
       manageAdminsPrivilege,
+      casesPrivilege,
       fetchMotivationsPrivilege,
       company,
       whitelistedIps
@@ -521,6 +524,10 @@ class GoogleAuth extends DbBase {
 
     if (manageAdminsPrivilege) {
       assert.ok(typeof manageAdminsPrivilege === 'boolean', 'manageAdminsPrivilege should be a boolean')
+    }
+
+    if (casesPrivilege) {
+      assert.ok(typeof casesPrivilege === 'boolean', 'casesPrivilege should be a boolean')
     }
 
     if (fetchMotivationsPrivilege) {
@@ -563,6 +570,7 @@ class GoogleAuth extends DbBase {
             blockPrivilege,
             analyticsPrivilege,
             manageAdminsPrivilege,
+            casesPrivilege,
             fetchMotivationsPrivilege,
             company,
             whitelistedIps,
@@ -584,6 +592,7 @@ class GoogleAuth extends DbBase {
       blockPrivilege,
       analyticsPrivilege,
       manageAdminsPrivilege,
+      casesPrivilege,
       fetchMotivationsPrivilege,
       company,
       active,
@@ -618,6 +627,10 @@ class GoogleAuth extends DbBase {
 
     if (manageAdminsPrivilege) {
       assert.ok(typeof manageAdminsPrivilege === 'boolean', 'manageAdminsPrivilege should be a boolean')
+    }
+
+    if (casesPrivilege) {
+      assert.ok(typeof casesPrivilege === 'boolean', 'casesPrivilege should be a boolean')
     }
 
     if (fetchMotivationsPrivilege) {
@@ -788,6 +801,13 @@ class GoogleAuth extends DbBase {
     return !!(admin.level === 0 && admin.manageAdminsPrivilege)
   }
 
+  async checkAdmHasCasesPrivilege (adminEmail) {
+    const admin = await this._getAdmin(adminEmail)
+    if (!admin) throw new Error('Searched admin was not found')
+
+    return !!(admin.level === 0 && admin.casesPrivilege)
+  }
+
   async checkAdmHasFetchMotivationsPrivilege (adminEmail) {
     const admin = await this._getAdmin(adminEmail)
     if (!admin) throw new Error('Searched admin was not found')
@@ -814,7 +834,7 @@ class GoogleAuth extends DbBase {
   async getAdmin (emailOrId, active = true, id = false) {
     const admin = await this._getAdmin(emailOrId, active, id)
     const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
-      'analyticsPrivilege', 'manageAdminsPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD, 'whitelistedIps']
+      'analyticsPrivilege', 'manageAdminsPrivilege', 'casesPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD, 'whitelistedIps']
 
     if (this.conf.useDB && admin) {
       if (admin[FORMS_FIELD]) {
