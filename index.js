@@ -36,6 +36,11 @@ async function verify (password, hash) {
   })
 }
 
+function isValidDate(value) {
+  const date = new Date(value);
+  return !isNaN(date.getTime());
+}
+
 const tableName = 'admin_users'
 /**
  * @typedef {{
@@ -584,7 +589,9 @@ class GoogleAuth extends DbBase {
       casesPrivilege,
       fetchMotivationsPrivilege,
       company,
-      active
+      active,
+      passwordResetToken,
+      passwordResetSentAt
     } = user
 
     assert.ok(typeof email === 'string', 'Email is required')
@@ -631,6 +638,14 @@ class GoogleAuth extends DbBase {
 
     if (active) {
       assert.ok(typeof active === 'boolean', 'active should be a boolean')
+    }
+
+    if (passwordResetToken) {
+      assert.ok(typeof passwordResetToken === 'string', 'passwordResetToken should be a string')
+    }
+
+    if (passwordResetSentAt) {
+      assert.ok(isValidDate(passwordResetSentAt), 'passwordResetSentAt should be a valid date')
     }
 
     const adm = await this._getAdmin(email, !active)
