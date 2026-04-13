@@ -197,4 +197,63 @@ describe('forms field', () => {
       assert.ok(!res)
     })
   })
+
+  describe('whitelistedIps field', () => {
+    const ips = ['192.168.1.1', '10.0.0.5']
+    const adminWithIps = {
+      email: testAdminEmail,
+      password: 'test123',
+      level: 0,
+      whitelistedIps: ips
+    }
+
+    it('should add admin and stringify whitelistedIps in the DB', async () => {
+      await authGoogle.addAdmin(adminWithIps)
+
+      await new Promise((resolve) => authGoogle.db.get('SELECT * FROM admin_users WHERE email=?', [testAdminEmail], (err, row) => {
+        if (err) throw err
+        assert.equal(row.whitelistedIps, JSON.stringify(ips))
+        resolve()
+      }))
+    })
+
+    it('should return whitelistedIps as a parsed array from getAdmin', async () => {
+      await authGoogle.addAdmin(adminWithIps)
+
+      const res = await authGoogle.getAdmin(testAdminEmail)
+
+      assert.deepEqual(res.whitelistedIps, ips)
+    })
+
+    it('should return undefined whitelistedIps when not set on admin', async () => {
+      await authGoogle.addAdmin({ email: testAdminEmail, password: 'test123', level: 0 })
+
+      const res = await authGoogle.getAdmin(testAdminEmail)
+
+      assert.equal(res.whitelistedIps, undefined)
+    })
+
+    it('should throw when adding admin with whitelistedIps not being an array', async () => {
+      try {
+        await authGoogle.addAdmin({ ...adminWithIps, whitelistedIps: '192.168.1.1' })
+        throw new Error('SHOULD_NOT_REACH_HERE')
+      } catch (e) {
+        assert.ok(e instanceof assert.AssertionError)
+        assert.strictEqual(e.message, 'whitelistedIps should be an array')
+      }
+    })
+
+
+    it('should update whitelistedIps and return the new list from getAdmin', async () => {
+      await authGoogle.addAdmin(adminWithIps)
+      const adminBeforeUpdate = await authGoogle.getAdmin(testAdminEmail)
+      assert.deepEqual(adminBeforeUpdate.whitelistedIps, ips)
+
+      const updatedIps = ['203.0.113.10']
+      await authGoogle.updateAdmin(testAdminEmail, { whitelistedIps: updatedIps })
+
+      const adminAfterUpdate = await authGoogle.getAdmin(testAdminEmail)
+      assert.deepEqual(adminAfterUpdate.whitelistedIps, updatedIps)
+    })
+  })
 })
