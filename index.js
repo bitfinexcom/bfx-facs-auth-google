@@ -11,7 +11,7 @@ const uuidv4 = require('uuid/v4')
 const { google } = require('googleapis')
 const { UserError } = require('./errors')
 const migrations = require('./migrations')
-const { cloneDeep } = require('@bitfinex/lib-js-util-base')
+const { cloneDeep, isNil } = require('@bitfinex/lib-js-util-base')
 
 const FORMS_FIELD = 'forms'
 
@@ -640,11 +640,11 @@ class GoogleAuth extends DbBase {
       assert.ok(typeof active === 'boolean', 'active should be a boolean')
     }
 
-    if (passwordResetToken) {
+    if (!isNil(passwordResetToken)) {
       assert.ok(typeof passwordResetToken === 'string', 'passwordResetToken should be a string')
     }
 
-    if (passwordResetSentAt) {
+    if (!isNil(passwordResetSentAt)) {
       assert.ok(isValidDate(passwordResetSentAt), 'passwordResetSentAt should be a valid date')
     }
 
