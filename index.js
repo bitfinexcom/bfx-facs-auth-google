@@ -14,6 +14,7 @@ const migrations = require('./migrations')
 const { cloneDeep } = require('@bitfinex/lib-js-util-base')
 
 const FORMS_FIELD = 'forms'
+const JSON_FIELDS = [FORMS_FIELD, 'whitelistedIps']
 
 async function hash (password, salt = '') {
   return new Promise((resolve, reject) => {
@@ -559,7 +560,7 @@ class GoogleAuth extends DbBase {
 
       this.db.run(
         `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${Array(keys.length).fill('?').join(', ')})`,
-        keys.map(key => (key === FORMS_FIELD || key === 'whitelistedIps') ? JSON.stringify(user[key]) : user[key]),
+        keys.map(key => JSON_FIELDS.includes(key) ? JSON.stringify(user[key]) : user[key]),
         function (err) {
           if (err) return reject(err)
 
@@ -660,7 +661,7 @@ class GoogleAuth extends DbBase {
 
       this.db.run(
         `UPDATE ${tableName} SET ${keys.join(' = ?, ')} = ? WHERE id = ?`,
-        keys.map(key => (key === FORMS_FIELD || key === 'whitelistedIps') ? JSON.stringify(user[key]) : user[key]).concat(adm.id),
+        keys.map(key => JSON_FIELDS.includes(key) ? JSON.stringify(user[key]) : user[key]).concat(adm.id),
         function (err) {
           if (err) return reject(err)
 
@@ -837,11 +838,8 @@ class GoogleAuth extends DbBase {
       'analyticsPrivilege', 'manageAdminsPrivilege', 'casesPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD, 'whitelistedIps']
 
     if (this.conf.useDB && admin) {
-      if (admin[FORMS_FIELD]) {
-        admin[FORMS_FIELD] = JSON.parse(admin[FORMS_FIELD])
-      }
-      if (admin.whitelistedIps) {
-        admin.whitelistedIps = JSON.parse(admin.whitelistedIps)
+      for (const field of JSON_FIELDS) {
+        if (admin[field]) admin[field] = JSON.parse(admin[field])
       }
     }
 
