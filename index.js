@@ -6,12 +6,12 @@ const assert = require('assert')
 const _ = require('lodash')
 const async = require('async')
 const crypto = require('crypto')
-const DbBase = require('bfx-facs-db-sqlite')
+const DbBase = require('@bitfinex/bfx-facs-db-sqlite')
 const uuidv4 = require('uuid/v4')
 const { google } = require('googleapis')
 const { UserError } = require('./errors')
 const migrations = require('./migrations')
-const { cloneDeep } = require('@bitfinexcom/lib-js-util-base')
+const { cloneDeep, isNil } = require('@bitfinex/lib-js-util-base')
 
 const FORMS_FIELD = 'forms'
 
@@ -36,6 +36,11 @@ async function verify (password, hash) {
   })
 }
 
+function isValidDate(value) {
+  const date = new Date(value);
+  return !isNaN(date.getTime());
+}
+
 const tableName = 'admin_users'
 /**
  * @typedef {{
@@ -45,6 +50,7 @@ const tableName = 'admin_users'
  *  blockPrivilege?: boolean,
  *  analyticsPrivilege?: boolean,
  *  manageAdminsPrivilege?: boolean,
+ *  casesPrivilege?: boolean,
  *  fetchMotivationsPrivilege?: boolean,
  *  passwordResetToken?: string,
  *  passwordResetSentAt?: Date,
@@ -90,6 +96,7 @@ class GoogleAuth extends DbBase {
         blockPrivilege TINYINTEGER,
         analyticsPrivilege TINYINTEGER,
         manageAdminsPrivilege TINYINTEGER,
+        casesPrivilege TINYINTEGER,
         passwordResetToken TEXT,
         passwordResetSentAt DATETIME,
         company TEXT,
@@ -493,6 +500,7 @@ class GoogleAuth extends DbBase {
       blockPrivilege,
       analyticsPrivilege,
       manageAdminsPrivilege,
+      casesPrivilege,
       fetchMotivationsPrivilege,
       company
     } = user
@@ -518,6 +526,10 @@ class GoogleAuth extends DbBase {
 
     if (manageAdminsPrivilege) {
       assert.ok(typeof manageAdminsPrivilege === 'boolean', 'manageAdminsPrivilege should be a boolean')
+    }
+
+    if (casesPrivilege) {
+      assert.ok(typeof casesPrivilege === 'boolean', 'casesPrivilege should be a boolean')
     }
 
     if (fetchMotivationsPrivilege) {
@@ -553,6 +565,7 @@ class GoogleAuth extends DbBase {
             blockPrivilege,
             analyticsPrivilege,
             manageAdminsPrivilege,
+            casesPrivilege,
             fetchMotivationsPrivilege,
             company,
             active: true,
@@ -573,9 +586,12 @@ class GoogleAuth extends DbBase {
       blockPrivilege,
       analyticsPrivilege,
       manageAdminsPrivilege,
+      casesPrivilege,
       fetchMotivationsPrivilege,
       company,
-      active
+      active,
+      passwordResetToken,
+      passwordResetSentAt
     } = user
 
     assert.ok(typeof email === 'string', 'Email is required')
@@ -608,6 +624,10 @@ class GoogleAuth extends DbBase {
       assert.ok(typeof manageAdminsPrivilege === 'boolean', 'manageAdminsPrivilege should be a boolean')
     }
 
+    if (casesPrivilege) {
+      assert.ok(typeof casesPrivilege === 'boolean', 'casesPrivilege should be a boolean')
+    }
+
     if (fetchMotivationsPrivilege) {
       assert.ok(typeof fetchMotivationsPrivilege === 'boolean', 'fetchMotivationsPrivilege should be a boolean')
     }
@@ -618,6 +638,14 @@ class GoogleAuth extends DbBase {
 
     if (active) {
       assert.ok(typeof active === 'boolean', 'active should be a boolean')
+    }
+
+    if (!isNil(passwordResetToken)) {
+      assert.ok(typeof passwordResetToken === 'string', 'passwordResetToken should be a string')
+    }
+
+    if (!isNil(passwordResetSentAt)) {
+      assert.ok(isValidDate(passwordResetSentAt), 'passwordResetSentAt should be a valid date')
     }
 
     const adm = await this._getAdmin(email, !active)
@@ -769,6 +797,13 @@ class GoogleAuth extends DbBase {
     return !!(admin.level === 0 && admin.manageAdminsPrivilege)
   }
 
+  async checkAdmHasCasesPrivilege (adminEmail) {
+    const admin = await this._getAdmin(adminEmail)
+    if (!admin) throw new Error('Searched admin was not found')
+
+    return !!(admin.level === 0 && admin.casesPrivilege)
+  }
+
   async checkAdmHasFetchMotivationsPrivilege (adminEmail) {
     const admin = await this._getAdmin(adminEmail)
     if (!admin) throw new Error('Searched admin was not found')
@@ -795,7 +830,7 @@ class GoogleAuth extends DbBase {
   async getAdmin (emailOrId, active = true, id = false) {
     const admin = await this._getAdmin(emailOrId, active, id)
     const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
-      'analyticsPrivilege', 'manageAdminsPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD]
+      'analyticsPrivilege', 'manageAdminsPrivilege', 'casesPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD]
 
     if (this.conf.useDB && admin && admin[FORMS_FIELD]) {
       admin[FORMS_FIELD] = JSON.parse(admin[FORMS_FIELD])

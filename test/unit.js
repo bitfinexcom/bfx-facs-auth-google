@@ -9,7 +9,7 @@ const path = require('path')
 const conf = require('./config/facs/auth-google.config')
 
 const AuthGoogle = require('../')
-const { omit } = require('@bitfinexcom/lib-js-util-base')
+const { omit } = require('@bitfinex/lib-js-util-base')
 
 const dbPath = path.join(__dirname, './db/')
 const ctx = { root: './test' }
@@ -24,10 +24,13 @@ const cleanup = () => {
 
 const testForms = ['passport', 'bank_statement', 'merchant']
 const testAdminEmail = 'testForms@admin.com'
-const testAdminWithForms = {
+const adminPayload = {
   email: testAdminEmail,
   password: 'test123',
-  level: 0,
+  level: 0
+}
+const testAdminWithForms = {
+  ...adminPayload,
   forms: testForms
 }
 
@@ -71,14 +74,42 @@ describe('forms field', () => {
     }).timeout(5000)
   })
 
-  describe('getAdmin', () => {
-    const adminPayload = {
-      email: testAdminEmail,
-      password: 'test123',
-      level: 0
+  it('updateAdmin should validate passwordResetToken', async () => {
+    await authGoogle.addAdmin(adminPayload)
+    try {
+      await authGoogle.updateAdmin(adminPayload.email, { passwordResetToken: 40 })
+      throw new Error('SHOULD_NOT_REACH_THIS_POINT')
+    } catch (err) {
+      assert.strictEqual(err.message, 'passwordResetToken should be a string')
     }
 
-    const hasJustBeenCreated = payload => assert.ok(Date.now() - new Date(payload.timestamp) < 1000)
+    try {
+      await authGoogle.updateAdmin(adminPayload.email, { passwordResetToken: false })
+      throw new Error('SHOULD_NOT_REACH_THIS_POINT')
+    } catch (err) {
+      assert.strictEqual(err.message, 'passwordResetToken should be a string')
+    }
+
+    const update = await authGoogle.updateAdmin(adminPayload.email, { passwordResetToken: 'sample_token' })
+    assert.strictEqual(update.passwordResetToken, 'sample_token')
+  })
+
+  it('updateAdmin should validate passwordResetSentAt', async () => {
+    await authGoogle.addAdmin(adminPayload)
+    try {
+      await authGoogle.updateAdmin(adminPayload.email, { passwordResetSentAt: 'invalid date' })
+      throw new Error('SHOULD_NOT_REACH_THIS_POINT')
+    } catch (err) {
+      assert.strictEqual(err.message, 'passwordResetSentAt should be a valid date')
+    }
+
+    const now = new Date().toISOString()
+    const update = await authGoogle.updateAdmin(adminPayload.email, { passwordResetSentAt: now })
+    assert.strictEqual(update.passwordResetSentAt, now)
+  })
+
+  describe('getAdmin', () => {
+    const hasJustBeenCreated = payload => assert.ok(Date.now() - new Date(payload.timestamp + 'Z').getTime() < 1000)
 
     const assertions = (getAdminResult, expectedActive = true) => {
       assert.equal(getAdminResult.email, adminPayload.email)

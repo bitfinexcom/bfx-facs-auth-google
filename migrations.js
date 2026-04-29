@@ -57,6 +57,17 @@ const migrations = [
         ADD fetchMotivationsPrivilege BOOLEAN
       `, cb)
     })
+  },
+  (_this, cb) => {
+    _this.db.all(`PRAGMA table_info(${tableName})`, [], (err, rows) => {
+      if (err) return cb(err)
+      if (rows?.find(row => row.name === 'casesPrivilege')) return cb()
+
+      _this.db.run(`
+        ALTER TABLE ${tableName}
+        ADD casesPrivilege TINYINTEGER
+      `, cb)
+    })
   }
 ]
 
