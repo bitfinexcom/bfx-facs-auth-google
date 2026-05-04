@@ -11,7 +11,7 @@ const uuidv4 = require('uuid/v4')
 const { google } = require('googleapis')
 const { UserError } = require('./errors')
 const migrations = require('./migrations')
-const { cloneDeep } = require('@bitfinex/lib-js-util-base')
+const { cloneDeep, isNil } = require('@bitfinex/lib-js-util-base')
 
 const FORMS_FIELD = 'forms'
 const JSON_FIELDS = [FORMS_FIELD, 'whitelistedIps']
@@ -35,6 +35,11 @@ async function verify (password, hash) {
       resolve(key === derivedKey.toString('hex'))
     })
   })
+}
+
+function isValidDate(value) {
+  const date = new Date(value);
+  return !isNaN(date.getTime());
 }
 
 const tableName = 'admin_users'
@@ -597,7 +602,9 @@ class GoogleAuth extends DbBase {
       fetchMotivationsPrivilege,
       company,
       active,
-      whitelistedIps
+      whitelistedIps,
+      passwordResetToken,
+      passwordResetSentAt
     } = user
 
     assert.ok(typeof email === 'string', 'Email is required')
@@ -651,6 +658,14 @@ class GoogleAuth extends DbBase {
       whitelistedIps.forEach((ip) => {
         assert.ok(typeof ip === 'string', 'each whitelistedIps entry should be a string')
       })
+    }
+    
+    if (!isNil(passwordResetToken)) {
+      assert.ok(typeof passwordResetToken === 'string', 'passwordResetToken should be a string')
+    }
+
+    if (!isNil(passwordResetSentAt)) {
+      assert.ok(isValidDate(passwordResetSentAt), 'passwordResetSentAt should be a valid date')
     }
 
     const adm = await this._getAdmin(email, !active)
