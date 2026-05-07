@@ -245,9 +245,9 @@ class GoogleAuth extends DbBase {
   /**
    * @param {{ user: LoginUserT, google: Credentials, ip: number }} args
    * @param { (err: null|Error, res: LoginResp) => void } cb
-   * @returns { void }
+   * @returns { Promise<void> }
    */
-  loginAdmin (args, cb) {
+  async loginAdmin (args, cb) {
     const { user, google, ip } = args
 
     if (!user && !google) {
@@ -299,7 +299,7 @@ class GoogleAuth extends DbBase {
         : cb(new Error('AUTH_FAC_ACCOUNT_IS_NOT_VALID'))
     } catch (e) {
       console.log(e)
-      cb(new Error('AUTH_FAC_INCORRECT_GOOGLE_TOKEN'))
+      cb(new Error('AUTH_FAC_ACCOUNT_IS_NOT_VALID'))
     }
   }
 
