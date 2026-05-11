@@ -14,6 +14,7 @@ const migrations = require('./migrations')
 const { cloneDeep, isNil } = require('@bitfinex/lib-js-util-base')
 
 const FORMS_FIELD = 'forms'
+const JSON_FIELDS = [FORMS_FIELD, 'whitelistedIps']
 
 async function hash (password, salt = '') {
   return new Promise((resolve, reject) => {
@@ -55,7 +56,8 @@ const tableName = 'admin_users'
  *  passwordResetToken?: string,
  *  passwordResetSentAt?: Date,
  *  company?: string,
- *  forms?: string[]
+ *  forms?: string[],
+ *  whitelistedIps?: string[]
  * }} BaseAdminT
  * @typedef { BaseAdminT & { password: string }} AddAdminT
  * @typedef { BaseAdminT & {
@@ -101,7 +103,8 @@ class GoogleAuth extends DbBase {
         passwordResetSentAt DATETIME,
         company TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-        ${FORMS_FIELD} TEXT
+        ${FORMS_FIELD} TEXT,
+        whitelistedIps TEXT
       )`,
       `CREATE UNIQUE INDEX IF NOT EXISTS uidx_email ON ${tableName}(email ASC)`
     ]
@@ -502,7 +505,8 @@ class GoogleAuth extends DbBase {
       manageAdminsPrivilege,
       casesPrivilege,
       fetchMotivationsPrivilege,
-      company
+      company,
+      whitelistedIps
     } = user
 
     assert.ok(typeof email === 'string', 'Email is required')
@@ -540,6 +544,13 @@ class GoogleAuth extends DbBase {
       assert.ok(typeof company === 'string', 'company should be a string')
     }
 
+    if (whitelistedIps !== undefined) {
+      assert.ok(Array.isArray(whitelistedIps), 'whitelistedIps should be an array')
+      whitelistedIps.forEach((ip) => {
+        assert.ok(typeof ip === 'string', 'each whitelistedIps entry should be a string')
+      })
+    }
+
     const adm = await this._getAdmin(email, false)
     if (adm) throw new UserError('ADMIN_ACCOUNT_EXISTS')
 
@@ -554,7 +565,7 @@ class GoogleAuth extends DbBase {
 
       this.db.run(
         `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${Array(keys.length).fill('?').join(', ')})`,
-        keys.map(key => key === FORMS_FIELD ? JSON.stringify(user[key]) : user[key]),
+        keys.map(key => JSON_FIELDS.includes(key) ? JSON.stringify(user[key]) : user[key]),
         function (err) {
           if (err) return reject(err)
 
@@ -568,6 +579,7 @@ class GoogleAuth extends DbBase {
             casesPrivilege,
             fetchMotivationsPrivilege,
             company,
+            whitelistedIps,
             active: true,
             id: this.lastID
           })
@@ -590,6 +602,7 @@ class GoogleAuth extends DbBase {
       fetchMotivationsPrivilege,
       company,
       active,
+      whitelistedIps,
       passwordResetToken,
       passwordResetSentAt
     } = user
@@ -640,6 +653,13 @@ class GoogleAuth extends DbBase {
       assert.ok(typeof active === 'boolean', 'active should be a boolean')
     }
 
+    if (whitelistedIps !== undefined) {
+      assert.ok(Array.isArray(whitelistedIps), 'whitelistedIps should be an array')
+      whitelistedIps.forEach((ip) => {
+        assert.ok(typeof ip === 'string', 'each whitelistedIps entry should be a string')
+      })
+    }
+    
     if (!isNil(passwordResetToken)) {
       assert.ok(typeof passwordResetToken === 'string', 'passwordResetToken should be a string')
     }
@@ -656,7 +676,7 @@ class GoogleAuth extends DbBase {
 
       this.db.run(
         `UPDATE ${tableName} SET ${keys.join(' = ?, ')} = ? WHERE id = ?`,
-        keys.map(key => user[key]).concat(adm.id),
+        keys.map(key => JSON_FIELDS.includes(key) ? JSON.stringify(user[key]) : user[key]).concat(adm.id),
         function (err) {
           if (err) return reject(err)
 
@@ -830,10 +850,12 @@ class GoogleAuth extends DbBase {
   async getAdmin (emailOrId, active = true, id = false) {
     const admin = await this._getAdmin(emailOrId, active, id)
     const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
-      'analyticsPrivilege', 'manageAdminsPrivilege', 'casesPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD]
+      'analyticsPrivilege', 'manageAdminsPrivilege', 'casesPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD, 'whitelistedIps']
 
-    if (this.conf.useDB && admin && admin[FORMS_FIELD]) {
-      admin[FORMS_FIELD] = JSON.parse(admin[FORMS_FIELD])
+    if (this.conf.useDB && admin) {
+      for (const field of JSON_FIELDS) {
+        if (admin[field]) admin[field] = JSON.parse(admin[field])
+      }
     }
 
     return admin

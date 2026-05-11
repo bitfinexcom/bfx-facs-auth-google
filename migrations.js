@@ -68,6 +68,17 @@ const migrations = [
         ADD casesPrivilege TINYINTEGER
       `, cb)
     })
+  },
+  (_this, cb) => {
+    _this.db.all(`PRAGMA table_info(${tableName})`, [], (err, rows) => {
+      if (err) return cb(err)
+      if (rows?.find(row => row.name === 'whitelistedIps')) return cb()
+
+      _this.db.run(`
+        ALTER TABLE ${tableName}
+        ADD whitelistedIps TEXT
+      `, cb)
+    })
   }
 ]
 
