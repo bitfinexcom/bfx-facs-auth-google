@@ -8,24 +8,12 @@ const async = require('async')
 const crypto = require('crypto')
 const DbBase = require('@bitfinex/bfx-facs-db-sqlite')
 const uuidv4 = require('uuid/v4')
+const { cloneDeep } = require('@bitfinex/lib-js-util-base')
 const { google } = require('googleapis')
-const { UserError } = require('./errors')
 const migrations = require('./migrations')
-const { cloneDeep, isNil } = require('@bitfinex/lib-js-util-base')
-
-const FORMS_FIELD = 'forms'
-const JSON_FIELDS = [FORMS_FIELD, 'whitelistedIps']
-
-async function hash (password, salt = '') {
-  return new Promise((resolve, reject) => {
-    const computedSalt = salt || crypto.randomBytes(8).toString('hex')
-
-    crypto.scrypt(password, computedSalt, 64, (err, derivedKey) => {
-      if (err) reject(err)
-      resolve(computedSalt + ':' + derivedKey.toString('hex'))
-    })
-  })
-}
+const AdminUserRepository = require('./src/admin-user-repo')
+const PrivilegeRepository = require('./src/privilege-repo')
+const AdminPrivilegeRepository = require('./src/admin-privilege-repo')
 
 async function verify (password, hash) {
   return new Promise((resolve, reject) => {
@@ -37,33 +25,7 @@ async function verify (password, hash) {
   })
 }
 
-function isValidDate(value) {
-  const date = new Date(value);
-  return !isNaN(date.getTime());
-}
-
-const tableName = 'admin_users'
 /**
- * @typedef {{
- *  email: string,
- *  level: number,
- *  readOnly?: boolean,
- *  blockPrivilege?: boolean,
- *  analyticsPrivilege?: boolean,
- *  manageAdminsPrivilege?: boolean,
- *  casesPrivilege?: boolean,
- *  fetchMotivationsPrivilege?: boolean,
- *  passwordResetToken?: string,
- *  passwordResetSentAt?: Date,
- *  company?: string,
- *  forms?: string[],
- *  whitelistedIps?: string[]
- * }} BaseAdminT
- * @typedef { BaseAdminT & { password: string }} AddAdminT
- * @typedef { BaseAdminT & {
- *  active: boolean,
- *  id: number
- * }} AddedAdminT
  * @typedef {{ username: string, password: string }} LoginUserT
  * @typedef {{
  *  access_token: string | null;
@@ -78,7 +40,7 @@ const tableName = 'admin_users'
  *  id_token?: string | null;
  *  scope?: string;
  * }} TokenCredentials
- * @typedef { AddedAdminT & {
+ * @typedef { AdminUserRepository.AddedAdminT & {
  *  username: string,
  *  token: string,
  *  expires_at: Date
@@ -88,25 +50,7 @@ class GoogleAuth extends DbBase {
   constructor (caller, opts = {}, ctx) {
     opts.name = 'auth-google'
     opts.runSqlAtStart = [
-      `CREATE TABLE IF NOT EXISTS ${tableName} (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT,
-        level INTEGER NOT NULL,
-        active TINYINTEGER DEFAULT 1,
-        readOnly TINYINTEGER,
-        blockPrivilege TINYINTEGER,
-        analyticsPrivilege TINYINTEGER,
-        manageAdminsPrivilege TINYINTEGER,
-        casesPrivilege TINYINTEGER,
-        passwordResetToken TEXT,
-        passwordResetSentAt DATETIME,
-        company TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-        ${FORMS_FIELD} TEXT,
-        whitelistedIps TEXT
-      )`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS uidx_email ON ${tableName}(email ASC)`
+      ...AdminUserRepository.runSqlAtStart
     ]
     super(caller, opts, ctx)
 
@@ -228,6 +172,11 @@ class GoogleAuth extends DbBase {
         }
       },
       super._start.bind(this),
+      async () => {
+        this.adminUserRepo = new AdminUserRepository(this.db, this.conf)
+        this.privilegeRepo = new PrivilegeRepository(this.db, this.conf)
+        this.adminPrivilegeRepo = new AdminPrivilegeRepository(this.db, this.conf)
+      },
       cb => {
         this.runMigrations(migrations, cb)
       },
@@ -314,7 +263,8 @@ class GoogleAuth extends DbBase {
     const query = { username, token, ip, level, expires_at: exp }
     try {
       await this._createUniqueAndExpireDbToken(query)
-      return cb(null, { username, token, level, ...extra, expires_at: exp })
+      const privileges = await this.adminPrivilegeRepo.getAdminPrivileges(extra.id)
+      return cb(null, { username, token, level, privileges, ...extra, expires_at: exp })
     } catch (e) {
       return cb(new Error('AUTH_FAC_ADMIN_TOKEN_CREATE_ERROR'))
     }
@@ -474,7 +424,7 @@ class GoogleAuth extends DbBase {
   async _saveAdminsFromConfig () {
     const admins = this.conf.ADM_USERS
     if (!(admins && Array.isArray(admins))) return true
-    const adminDbHasData = await this._checkIfAdminDbHasData()
+    const adminDbHasData = await this.adminUserRepo.doesAdminDbHaveData()
     if (adminDbHasData) return true
 
     const tasks = admins.map(async (admin) => {
@@ -489,274 +439,37 @@ class GoogleAuth extends DbBase {
   }
 
   /**
-   * @param { AddAdminT } user
-   * @returns { Promise<AddedAdminT> }
+   * @param { AdminUserRepository.AddAdminT } user
+   * @returns { Promise<AdminUserRepository.AddedAdminT> }
    */
   async addAdmin (user) {
     assert.ok(this.conf.useDB, 'Cannot add admins if DB is not available')
 
-    const {
-      email,
-      password,
-      level,
-      readOnly,
-      blockPrivilege,
-      analyticsPrivilege,
-      manageAdminsPrivilege,
-      casesPrivilege,
-      fetchMotivationsPrivilege,
-      company,
-      whitelistedIps
-    } = user
-
-    assert.ok(typeof email === 'string', 'Email is required')
-    assert.ok(typeof level === 'number', 'Level must be a number')
-
-    if (password) {
-      assert.ok(typeof password === 'string', 'Password should be a string')
-    }
-
-    if (readOnly) {
-      assert.ok(typeof readOnly === 'boolean', 'readOnly should be a boolean')
-    }
-
-    if (blockPrivilege) {
-      assert.ok(typeof blockPrivilege === 'boolean', 'blockPrivilege should be a boolean')
-    }
-
-    if (analyticsPrivilege) {
-      assert.ok(typeof analyticsPrivilege === 'boolean', 'analyticsPrivilege should be a boolean')
-    }
-
-    if (manageAdminsPrivilege) {
-      assert.ok(typeof manageAdminsPrivilege === 'boolean', 'manageAdminsPrivilege should be a boolean')
-    }
-
-    if (casesPrivilege) {
-      assert.ok(typeof casesPrivilege === 'boolean', 'casesPrivilege should be a boolean')
-    }
-
-    if (fetchMotivationsPrivilege) {
-      assert.ok(typeof fetchMotivationsPrivilege === 'boolean', 'fetchMotivationsPrivilege should be a boolean')
-    }
-
-    if (company) {
-      assert.ok(typeof company === 'string', 'company should be a string')
-    }
-
-    if (whitelistedIps !== undefined) {
-      assert.ok(Array.isArray(whitelistedIps), 'whitelistedIps should be an array')
-      whitelistedIps.forEach((ip) => {
-        assert.ok(typeof ip === 'string', 'each whitelistedIps entry should be a string')
-      })
-    }
-
-    const adm = await this._getAdmin(email, false)
-    if (adm) throw new UserError('ADMIN_ACCOUNT_EXISTS')
-
-    const hashedPassword = password
-      ? await hash(password, this.conf.hashSalt)
-      : null
-
-    user.password = hashedPassword
-
-    return new Promise((resolve, reject) => {
-      const keys = Object.keys(user)
-
-      this.db.run(
-        `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${Array(keys.length).fill('?').join(', ')})`,
-        keys.map(key => JSON_FIELDS.includes(key) ? JSON.stringify(user[key]) : user[key]),
-        function (err) {
-          if (err) return reject(err)
-
-          resolve({
-            email,
-            level,
-            readOnly,
-            blockPrivilege,
-            analyticsPrivilege,
-            manageAdminsPrivilege,
-            casesPrivilege,
-            fetchMotivationsPrivilege,
-            company,
-            whitelistedIps,
-            active: true,
-            id: this.lastID
-          })
-        }
-      )
-    })
+    return this.adminUserRepo.add(user)
   }
 
   async updateAdmin (email, user) {
-    assert.ok(this.conf.useDB, 'Cannot add admins if DB is not available')
+    assert.ok(this.conf.useDB, 'Cannot update admins if DB is not available')
 
-    const {
-      password,
-      level,
-      readOnly,
-      blockPrivilege,
-      analyticsPrivilege,
-      manageAdminsPrivilege,
-      casesPrivilege,
-      fetchMotivationsPrivilege,
-      company,
-      active,
-      whitelistedIps,
-      passwordResetToken,
-      passwordResetSentAt
-    } = user
-
-    assert.ok(typeof email === 'string', 'Email is required')
-
-    if (user.email) {
-      throw new UserError('Email cannot be updated')
-    }
-
-    if (password) {
-      throw new UserError('Use Change Password endpoint to update user password')
-    }
-
-    if (level) {
-      assert.ok(typeof level === 'number', 'Level must be a number')
-    }
-
-    if (readOnly) {
-      assert.ok(typeof readOnly === 'boolean', 'readOnly should be a boolean')
-    }
-
-    if (blockPrivilege) {
-      assert.ok(typeof blockPrivilege === 'boolean', 'blockPrivilege should be a boolean')
-    }
-
-    if (analyticsPrivilege) {
-      assert.ok(typeof analyticsPrivilege === 'boolean', 'analyticsPrivilege should be a boolean')
-    }
-
-    if (manageAdminsPrivilege) {
-      assert.ok(typeof manageAdminsPrivilege === 'boolean', 'manageAdminsPrivilege should be a boolean')
-    }
-
-    if (casesPrivilege) {
-      assert.ok(typeof casesPrivilege === 'boolean', 'casesPrivilege should be a boolean')
-    }
-
-    if (fetchMotivationsPrivilege) {
-      assert.ok(typeof fetchMotivationsPrivilege === 'boolean', 'fetchMotivationsPrivilege should be a boolean')
-    }
-
-    if (company) {
-      assert.ok(typeof company === 'string', 'company should be a string')
-    }
-
-    if (active) {
-      assert.ok(typeof active === 'boolean', 'active should be a boolean')
-    }
-
-    if (whitelistedIps !== undefined) {
-      assert.ok(Array.isArray(whitelistedIps), 'whitelistedIps should be an array')
-      whitelistedIps.forEach((ip) => {
-        assert.ok(typeof ip === 'string', 'each whitelistedIps entry should be a string')
-      })
-    }
-    
-    if (!isNil(passwordResetToken)) {
-      assert.ok(typeof passwordResetToken === 'string', 'passwordResetToken should be a string')
-    }
-
-    if (!isNil(passwordResetSentAt)) {
-      assert.ok(isValidDate(passwordResetSentAt), 'passwordResetSentAt should be a valid date')
-    }
-
-    const adm = await this._getAdmin(email, !active)
-    if (!adm) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
-
-    return new Promise((resolve, reject) => {
-      const keys = Object.keys(user)
-
-      this.db.run(
-        `UPDATE ${tableName} SET ${keys.join(' = ?, ')} = ? WHERE id = ?`,
-        keys.map(key => JSON_FIELDS.includes(key) ? JSON.stringify(user[key]) : user[key]).concat(adm.id),
-        function (err) {
-          if (err) return reject(err)
-
-          resolve(user)
-        }
-      )
-    })
+    return this.adminUserRepo.update(email, user)
   }
 
   async updateAdminPassword (email, newPassword, oldPassword) {
-    assert.ok(this.conf.useDB, 'Cannot add admins if DB is not available')
+    assert.ok(this.conf.useDB, 'Cannot update admins if DB is not available')
 
-    assert.ok(typeof email === 'string', 'Email is required')
-    assert.ok(typeof newPassword === 'string', 'New Password is required')
-    assert.ok(typeof oldPassword === 'string', 'Old Password is required')
-
-    const adm = await this._getAdmin(email)
-    if (!adm) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
-
-    if (!(await verify(oldPassword, adm.password))) {
-      throw new UserError('INVALID_PASSWORD')
-    }
-
-    const password = await hash(newPassword, this.conf.hashSalt)
-
-    return new Promise((resolve, reject) => {
-      this.db.run(
-        `UPDATE ${tableName} SET password = ? WHERE id = ?`,
-        [password, adm.id],
-        function (err) {
-          if (err) return reject(err)
-
-          resolve(true)
-        }
-      )
-    })
+    return this.adminUserRepo.updatePassword(email, newPassword, oldPassword)
   }
 
   async resetAdminPassword (email, newPassword, passwordResetToken) {
-    assert.ok(this.conf.useDB, 'Cannot add admins if DB is not available')
+    assert.ok(this.conf.useDB, 'Cannot update admins if DB is not available')
 
-    assert.ok(typeof email === 'string', 'Email is required')
-    assert.ok(typeof newPassword === 'string', 'New Password is required')
-
-    const admin = await this._getAdmin(email)
-    if (!admin) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
-    if (admin.passwordResetToken !== passwordResetToken) throw new UserError('INVALID_passwordResetToken')
-    const expiryDate = new Date(admin.passwordResetSentAt)
-    expiryDate.setDate(expiryDate.getDate() + 1)
-    if (Date.now() > expiryDate) throw new UserError('RESET_LINK_EXPIRED')
-
-    const password = await hash(newPassword, this.conf.hashSalt)
-
-    return new Promise((resolve, reject) => {
-      this.db.run(
-        `UPDATE ${tableName} SET password = ? WHERE id = ?`,
-        [password, admin.id],
-        function (err) {
-          if (err) return reject(err)
-
-          resolve(true)
-        }
-      )
-    })
+    return this.adminUserRepo.resetPassword(email, newPassword, passwordResetToken)
   }
 
   async removeAdmin (idOrEmail) {
     assert.ok(this.conf.useDB, 'Cannot remove admins if DB is not available')
 
-    return new Promise((resolve, reject) => {
-      this.db.serialize(() => {
-        const statement = this.db.prepare(`DELETE FROM ${tableName} WHERE id = ? OR LOWER(email) = ?`)
-        statement.run([idOrEmail, `${idOrEmail}`.toLowerCase()])
-        statement.finalize(err => {
-          if (err) return reject(err)
-
-          resolve(idOrEmail)
-        })
-      })
-    })
+    return this.adminUserRepo.remove(idOrEmail)
   }
 
   async basicAuthAdmLogCheck (sentEmail, sentPassword) {
@@ -831,29 +544,19 @@ class GoogleAuth extends DbBase {
     return !!(admin.level === 0 || admin.fetchMotivationsPrivilege)
   }
 
-  _checkIfAdminDbHasData () {
-    return new Promise((resolve, reject) => {
-      const query = `SELECT EXISTS(SELECT 1 FROM ${tableName}) as exist`
-      this.db.get(query, (err, row) => {
-        if (err) return reject(err)
-        resolve(row?.exist)
-      })
-    })
-  }
-
   /**
    * @param { string|number } emailOrId - Identifier used for searching the admin, it can be either the admin email address or its database id.
    * @param { boolean } [active=true] - Flag for considering only the active users, it is `true` by default. If `false`, it will search through inactive users too.
    * @param { boolean } [id=false] - Flag for searching as well by id criterion, it's `false` by default. If `true`, enables the mentioned behavior.
-   * @returns { Promise<BaseAdminT & { timestamp: Date, active: boolean }> }
+   * @returns { Promise<AdminUserRepository.BaseAdminT & { timestamp: Date, active: boolean }> }
    */
   async getAdmin (emailOrId, active = true, id = false) {
     const admin = await this._getAdmin(emailOrId, active, id)
-    const displayKeys = ['email', 'level', 'blockPrivilege', 'company',
-      'analyticsPrivilege', 'manageAdminsPrivilege', 'casesPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', FORMS_FIELD, 'whitelistedIps']
+    const displayKeys = ['id', 'email', 'level', 'blockPrivilege', 'company',
+      'analyticsPrivilege', 'manageAdminsPrivilege', 'casesPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', AdminUserRepository.FORMS_FIELD, 'whitelistedIps']
 
     if (this.conf.useDB && admin) {
-      for (const field of JSON_FIELDS) {
+      for (const field of AdminUserRepository.JSON_FIELDS) {
         if (admin[field]) admin[field] = JSON.parse(admin[field])
       }
     }
@@ -867,30 +570,8 @@ class GoogleAuth extends DbBase {
     if (!emailOrId) return false
 
     return this.conf.useDB
-      ? this._getAdminFromDB(emailOrId, active, id)
+      ? this.adminUserRepo.getAdmin(emailOrId, active, id)
       : this._getAdminFromConfig(emailOrId)
-  }
-
-  async _getAdminFromDB (emailOrId, active, id) {
-    return new Promise((resolve, reject) => {
-      const identifierCondition = id
-        ? '(LOWER(email) = ? OR id = ?)'
-        : 'LOWER(email) = ?'
-
-      const query = active
-        ? `SELECT * FROM ${tableName} WHERE ${identifierCondition} AND active = 1`
-        : `SELECT * FROM ${tableName} WHERE ${identifierCondition}`
-
-      const params = [String(emailOrId).toLowerCase()]
-      if (id) {
-        params.push(emailOrId)
-      }
-
-      this.db.get(query, params, (err, row) => {
-        if (err) return reject(err)
-        resolve(row)
-      })
-    })
   }
 
   _getAdminFromConfig (email) {
@@ -905,31 +586,8 @@ class GoogleAuth extends DbBase {
 
   async getAdminEmails (active = true, company) {
     return this.conf.useDB
-      ? this._getAdminEmailsFromDB(active, company)
+      ? this.adminUserRepo.getAdminEmails(active, company)
       : this._getAdminEmailsFromConfig(company)
-  }
-
-  async _getAdminEmailsFromDB (active, company) {
-    return new Promise((resolve, reject) => {
-      const whereClause = [['active', active && 1], ['company', company && `'${company}'`]].reduce((query, prop) => {
-        if (prop[1]) {
-          if (query.length) {
-            query += ' AND '
-          }
-          query += `${prop[0]} = ${prop[1]}`
-        }
-        return query
-      }, '')
-
-      const query = active || company
-        ? `SELECT LOWER(email) AS email FROM ${tableName} WHERE ${whereClause} ORDER BY email ASC`
-        : `SELECT LOWER(email) AS email FROM ${tableName} ORDER BY email ASC`
-
-      this.db.all(query, [], (err, rows) => {
-        if (err) return reject(err)
-        resolve((rows || []).map(row => row.email))
-      })
-    })
   }
 
   async _getAdminEmailsFromConfig (company) {
@@ -947,6 +605,77 @@ class GoogleAuth extends DbBase {
   async hasPassword (email) {
     const admin = await this._getAdmin(email)
     return !!admin?.password
+  }
+
+  addPrivilege (name) {
+    return this.privilegeRepo.add({ name })
+  }
+
+  getAllPrivileges () {
+    return this.privilegeRepo.findAll()
+  }
+
+  /**
+   *
+   * @param {string} emailOrId
+   * @param {number} privilegeId
+   * @returns {Promise<{ admin: emailOrId, privilege: string }>}
+   */
+  async assignAdminPrivilege (emailOrId, privilegeId) {
+    const admin = await this.adminUserRepo.getAdmin(emailOrId, true, true)
+    if (!admin) throw new Error('INVALID_ADMIN')
+
+    const privilege = await this.privilegeRepo.findById(privilegeId)
+    if (!privilege) throw new Error('INVALID_PRIVILEGE_ID')
+
+    await this.adminPrivilegeRepo.add({ adminId: admin.id, privilegeId: privilege.id })
+    return { admin: emailOrId, privilege: privilege.name }
+  }
+
+  /**
+   *
+   * @param {string} emailOrId
+   * @param {number} privilegeId
+   * @returns {Promise<{ admin: emailOrId, privilege: string }>}
+   */
+  async unAssignAdminPrivilege (emailOrId, privilegeId) {
+    const admin = await this.adminUserRepo.getAdmin(emailOrId, true, true)
+    if (!admin) throw new Error('INVALID_ADMIN')
+
+    const privilege = await this.privilegeRepo.findById(privilegeId)
+    if (!privilege) throw new Error('INVALID_PRIVILEGE_ID')
+
+    await this.adminPrivilegeRepo.remove(admin.id, privilege.id)
+    return { admin: emailOrId, privilege: privilege.name }
+  }
+
+  /**
+   *
+   * @param {string} emailOrId
+   * @param {string} privilege
+   * @returns {Promise<Boolean>}
+   */
+  async checkAdminHasRequiredPrivilege (emailOrId, privilege) {
+    const admin = await this.adminUserRepo.getAdmin(emailOrId, true, true)
+    if (!admin) throw new Error('INVALID_ADMIN')
+
+    const adminPrivilege = await this.adminPrivilegeRepo.findAdminPrivilege(admin.id, privilege)
+    return Boolean(adminPrivilege)
+  }
+
+  /**
+   * @param { string } email
+   * @param { boolean } [active=true]
+   * @param { boolean } [id=false]
+   * @returns {Promise<AdminUserRepository.BaseAdminT & {timestamp: Date, active: boolean, privileges: Array<{id: number, name: string}>}>}
+   */
+  async getAdminWithPrivileges (email, active = true, id = false) {
+    const admin = await this.getAdmin(email, active, id)
+    if (!admin) return admin
+
+    const privileges = await this.adminPrivilegeRepo.getAdminPrivileges(admin.id)
+
+    return { ...admin, privileges }
   }
 }
 
