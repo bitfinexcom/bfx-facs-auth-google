@@ -1,111 +1,83 @@
 'use strict'
 
+const { FORMS_FIELD } = require('./src/admin-user-repo')
 const tableName = 'admin_users'
 const privilegesTable = 'privileges'
 const adminPrivilegeTable = 'admin_privileges'
 
-const migrations = [
-  (_this, cb) => {
-    _this.db.all(`PRAGMA table_info(${tableName})`, [], (err, rows) => {
-      if (err) return cb(err)
-      if (rows?.find(row => row.name === 'manageAdminsPrivilege')) return cb()
+/**
+ *
+ * @param {import('better-sqlite3').Database} db
+ */
+const betterSqliteMigration = (db) => {
+  db.transaction(() => {
+    db.exec(`CREATE TABLE IF NOT EXISTS ${tableName}
+             (
+                 id                                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                 email                              TEXT UNIQUE NOT NULL,
+                 password                           TEXT,
+                 level                              INTEGER     NOT NULL,
+                 active                TINYINTEGER DEFAULT 1,
+                 readOnly              TINYINTEGER,
+                 blockPrivilege        TINYINTEGER,
+                 analyticsPrivilege    TINYINTEGER,
+                 manageAdminsPrivilege TINYINTEGER,
+                 casesPrivilege        TINYINTEGER,
+                 passwordResetToken    TEXT,
+                 passwordResetSentAt   DATETIME,
+                 company               TEXT,
+                 timestamp             DATETIME    DEFAULT CURRENT_TIMESTAMP,
+                 ${FORMS_FIELD}        TEXT,
+                 whitelistedIps        TEXT
+             )`)
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS uidx_email ON ${tableName} (email ASC)`)
+    const rows = db.prepare(`PRAGMA table_info(${tableName})`).all()
+    if (!rows.some(row => row.name === 'manageAdminsPrivilege')) {
+      db.prepare(`ALTER TABLE ${tableName}
+            ADD manageAdminsPrivilege TINYINTEGER`).run()
+    }
+    if (!rows.some(row => row.name === 'forms')) {
+      db.exec(`ALTER TABLE ${tableName}
+            ADD forms TEXT`)
+    }
+    if (!rows.some(row => row.name === 'passwordResetSentAt')) {
+      db.exec(`ALTER TABLE ${tableName}
+            ADD passwordResetSentAt DATETIME`)
+    }
+    if (!rows.some(row => row.name === 'passwordResetToken')) {
+      db.exec(`ALTER TABLE ${tableName}
+            ADD passwordResetToken TEXT`)
+    }
+    if (!rows.some(row => row.name === 'fetchMotivationsPrivilege')) {
+      db.exec(`ALTER TABLE ${tableName}
+            ADD fetchMotivationsPrivilege BOOLEAN`)
+    }
+    if (!rows.some(row => row.name === 'casesPrivilege')) {
+      db.exec(`ALTER TABLE ${tableName}
+            ADD casesPrivilege TINYINTEGER`)
+    }
+    if (!rows.some(row => row.name === 'whitelistedIps')) {
+      db.exec(`ALTER TABLE ${tableName}
+            ADD whitelistedIps TEXT`)
+    }
+    db.exec('PRAGMA foreign_keys = ON;')
+    db.exec(`CREATE TABLE IF NOT EXISTS ${privilegesTable}
+               (
+                   id   INTEGER PRIMARY KEY AUTOINCREMENT,
+                   name TEXT NOT NULL UNIQUE
+               );`)
+    db.exec(`
+          CREATE TABLE IF NOT EXISTS ${adminPrivilegeTable}
+          (
+              admin_id     INTEGER NOT NULL,
+              privilege_id INTEGER NOT NULL,
 
-      _this.db.run(`
-        ALTER TABLE ${tableName}
-        ADD manageAdminsPrivilege TINYINTEGER
-      `, cb)
-    })
-  },
-  (_this, cb) => {
-    _this.db.all(`PRAGMA table_info(${tableName})`, [], (err, rows) => {
-      if (err) return cb(err)
-      if (rows?.find(row => row.name === 'forms')) return cb()
+              PRIMARY KEY (admin_id, privilege_id),
 
-      _this.db.run(`
-        ALTER TABLE ${tableName}
-        ADD forms TEXT
-      `, cb)
-    })
-  },
-  (_this, cb) => {
-    _this.db.all(`PRAGMA table_info(${tableName})`, [], (err, rows) => {
-      if (err) return cb(err)
-      if (rows?.find(row => row.name === 'passwordResetSentAt')) return cb()
+              FOREIGN KEY (admin_id) REFERENCES admin_users (id) ON DELETE CASCADE,
+              FOREIGN KEY (privilege_id) REFERENCES privileges (id) ON DELETE CASCADE
+          );`)
+  })()
+}
 
-      _this.db.run(`
-        ALTER TABLE ${tableName}
-        ADD passwordResetSentAt DATETIME
-      `, cb)
-    })
-  },
-  (_this, cb) => {
-    _this.db.all(`PRAGMA table_info(${tableName})`, [], (err, rows) => {
-      if (err) return cb(err)
-      if (rows?.find(row => row.name === 'passwordResetToken')) return cb()
-
-      _this.db.run(`
-        ALTER TABLE ${tableName}
-        ADD passwordResetToken TEXT
-      `, cb)
-    })
-  },
-  (_this, cb) => {
-    _this.db.all(`PRAGMA table_info(${tableName})`, [], (err, rows) => {
-      if (err) return cb(err)
-      if (rows?.find(row => row.name === 'fetchMotivationsPrivilege')) return cb()
-
-      _this.db.run(`
-        ALTER TABLE ${tableName}
-        ADD fetchMotivationsPrivilege BOOLEAN
-      `, cb)
-    })
-  },
-  (_this, cb) => {
-    _this.db.all(`PRAGMA table_info(${tableName})`, [], (err, rows) => {
-      if (err) return cb(err)
-      if (rows?.find(row => row.name === 'casesPrivilege')) return cb()
-
-      _this.db.run(`
-        ALTER TABLE ${tableName}
-        ADD casesPrivilege TINYINTEGER
-      `, cb)
-    })
-  },
-  (_this, cb) => {
-    _this.db.all(`PRAGMA table_info(${tableName})`, [], (err, rows) => {
-      if (err) return cb(err)
-      if (rows?.find(row => row.name === 'whitelistedIps')) return cb()
-
-      _this.db.run(`
-        ALTER TABLE ${tableName}
-        ADD whitelistedIps TEXT
-      `, cb)
-    })
-  },
-  (_this, cb) => {
-    _this.db.exec('PRAGMA foreign_keys = ON;', cb)
-  },
-  (_this, cb) => {
-    _this.db.run(`
-      CREATE TABLE IF NOT EXISTS ${privilegesTable} (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL UNIQUE
-      );
-    `, cb)
-  },
-  (_this, cb) => {
-    _this.db.run(`
-      CREATE TABLE IF NOT EXISTS ${adminPrivilegeTable} (
-        admin_id INTEGER NOT NULL,
-        privilege_id INTEGER NOT NULL,
-
-        PRIMARY KEY (admin_id, privilege_id),
-
-        FOREIGN KEY (admin_id) REFERENCES admin_users(id) ON DELETE CASCADE,
-        FOREIGN KEY (privilege_id) REFERENCES privileges(id) ON DELETE CASCADE
-      );
-    `, cb)
-  }
-]
-
-module.exports = migrations
+module.exports = betterSqliteMigration

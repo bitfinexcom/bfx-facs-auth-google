@@ -2,7 +2,7 @@
 
 const assert = require('assert')
 const crypto = require('crypto')
-const { isNil } = require('@bitfinex/lib-js-util-base')
+const { isNil, isBoolean } = require('@bitfinex/lib-js-util-base')
 const BaseRepository = require('./repository')
 const { UserError } = require('../errors')
 
@@ -29,25 +29,16 @@ const { UserError } = require('../errors')
  * }} AddedAdminT
  */
 
-async function hash (password, salt = '') {
-  return new Promise((resolve, reject) => {
-    const computedSalt = salt || crypto.randomBytes(8).toString('hex')
-
-    crypto.scrypt(password, computedSalt, 64, (err, derivedKey) => {
-      if (err) reject(err)
-      resolve(computedSalt + ':' + derivedKey.toString('hex'))
-    })
-  })
+function hash (password, salt = '') {
+  const computedSalt = salt || crypto.randomBytes(8).toString('hex')
+  const derivedKey = crypto.scryptSync(password, computedSalt, 64)
+  return computedSalt + ':' + derivedKey.toString('hex')
 }
 
-async function verify (password, hash) {
-  return new Promise((resolve, reject) => {
-    const [salt, key] = hash.split(':')
-    crypto.scrypt(password, salt, 64, (err, derivedKey) => {
-      if (err) reject(err)
-      resolve(key === derivedKey.toString('hex'))
-    })
-  })
+function verify (password, hash) {
+  const [salt, key] = hash.split(':')
+  const derivedKey = crypto.scryptSync(password, salt, 64)
+  return key === derivedKey.toString('hex')
 }
 
 function isValidDate (value) {
@@ -84,7 +75,7 @@ class AdminUserRepository extends BaseRepository {
 
   /**
    *
-   * @param {import('sqlite3').Database} db
+   * @param {import('better-sqlite3').Database} db
    * @param {{useDb: boolean, hashSalt: string}} conf
    */
   constructor (db, conf) {
@@ -93,9 +84,9 @@ class AdminUserRepository extends BaseRepository {
 
   /**
    * @param { AddAdminT } user
-   * @returns { Promise<AddedAdminT> }
+   * @returns { AddedAdminT }
    */
-  async add (user) {
+  add (user) {
     const {
       email,
       password,
@@ -152,14 +143,12 @@ class AdminUserRepository extends BaseRepository {
       })
     }
 
-    const adm = await this.getAdmin(email, false)
+    const adm = this.getAdmin(email, false)
     if (adm) throw new UserError('ADMIN_ACCOUNT_EXISTS')
 
-    const hashedPassword = password
-      ? await hash(password, this.conf.hashSalt)
+    user.password = password
+      ? hash(password, this.conf.hashSalt)
       : null
-
-    user.password = hashedPassword
 
     const data = {
       ...user,
@@ -167,7 +156,7 @@ class AdminUserRepository extends BaseRepository {
         Object.keys(user).map(key => [key, AdminUserRepository.JSON_FIELDS.includes(key) ? JSON.stringify(user[key]) : user[key]])
       )
     }
-    const saved = await super.add(data)
+    const saved = super.add(data)
 
     return {
       email,
@@ -185,7 +174,7 @@ class AdminUserRepository extends BaseRepository {
     }
   }
 
-  async update (email, user) {
+  update (email, user) {
     const {
       password,
       level,
@@ -263,56 +252,39 @@ class AdminUserRepository extends BaseRepository {
       assert.ok(isValidDate(passwordResetSentAt), 'passwordResetSentAt should be a valid date')
     }
 
-    const adm = await this.getAdmin(email, !active)
+    const adm = this.getAdmin(email, !active)
     if (!adm) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
 
-    return new Promise((resolve, reject) => {
-      const keys = Object.keys(user)
-
-      this.db.run(
-        `UPDATE ${this.tableName} SET ${keys.join(' = ?, ')} = ? WHERE id = ?`,
-        keys.map(key => AdminUserRepository.JSON_FIELDS.includes(key) ? JSON.stringify(user[key]) : user[key]).concat(adm.id),
-        function (err) {
-          if (err) return reject(err)
-
-          resolve(user)
-        }
-      )
-    })
+    const keys = Object.keys(user)
+    const params = keys.map(key => {
+      const value = AdminUserRepository.JSON_FIELDS.includes(key) ? JSON.stringify(user[key]) : user[key]
+      return isBoolean(value) ? Number(value) : value
+    }).concat(adm.id)
+    this.db.prepare(`UPDATE ${this.tableName} SET ${keys.join(' = ?, ')} = ? WHERE id = ?`).run(...params)
+    return this.db.prepare(`SELECT * FROM ${this.tableName} WHERE id = ?`).get(adm.id)
   }
 
-  async updatePassword (email, newPassword, oldPassword) {
+  updatePassword (email, newPassword, oldPassword) {
     assert.ok(typeof email === 'string', 'Email is required')
     assert.ok(typeof newPassword === 'string', 'New Password is required')
     assert.ok(typeof oldPassword === 'string', 'Old Password is required')
 
-    const adm = await this.getAdmin(email)
+    const adm = this.getAdmin(email)
     if (!adm) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
 
-    if (!(await verify(oldPassword, adm.password))) {
-      throw new UserError('INVALID_PASSWORD')
-    }
+    if (!(verify(oldPassword, adm.password))) throw new UserError('INVALID_PASSWORD')
 
-    const password = await hash(newPassword, this.conf.hashSalt)
+    const password = hash(newPassword, this.conf.hashSalt)
 
-    return new Promise((resolve, reject) => {
-      this.db.run(
-        `UPDATE ${this.tableName} SET password = ? WHERE id = ?`,
-        [password, adm.id],
-        function (err) {
-          if (err) return reject(err)
-
-          resolve(true)
-        }
-      )
-    })
+    this.db.prepare(`UPDATE ${this.tableName} SET password = ? WHERE id = ?`).run(password, adm.id)
+    return true
   }
 
-  async resetPassword (email, newPassword, passwordResetToken) {
+  resetPassword (email, newPassword, passwordResetToken) {
     assert.ok(typeof email === 'string', 'Email is required')
     assert.ok(typeof newPassword === 'string', 'New Password is required')
 
-    const admin = await this.getAdmin(email)
+    const admin = this.getAdmin(email)
     if (!admin) throw new UserError('ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
     if (admin.passwordResetToken !== passwordResetToken) throw new UserError('INVALID_passwordResetToken')
 
@@ -320,47 +292,29 @@ class AdminUserRepository extends BaseRepository {
     expiryDate.setDate(expiryDate.getDate() + 1)
     if (Date.now() > expiryDate) throw new UserError('RESET_LINK_EXPIRED')
 
-    const password = await hash(newPassword, this.conf.hashSalt)
-
-    return new Promise((resolve, reject) => {
-      this.db.run(
-        `UPDATE ${this.tableName} SET password = ? WHERE id = ?`,
-        [password, admin.id],
-        function (err) {
-          if (err) return reject(err)
-
-          resolve(true)
-        }
-      )
-    })
+    const password = hash(newPassword, this.conf.hashSalt)
+    this.db.prepare(`UPDATE ${this.tableName} SET password = ? WHERE id = ?`).run(password, admin.id)
+    return true
   }
 
   /**
    * @param { string|number } emailOrId - Identifier used for searching the admin, it can be either the admin email address or its database id.
    * @param { boolean } [active=true] - Flag for considering only the active users, it is `true` by default. If `false`, it will search through inactive users too.
    * @param { boolean } [id=false] - Flag for searching as well by id criterion, it's `false` by default. If `true`, enables the mentioned behavior.
-   * @returns { Promise<BaseAdminT & { timestamp: Date, active: boolean }> }
+   * @returns { BaseAdminT & { timestamp: Date, active: boolean } }
    */
   getAdmin (emailOrId, active = true, id = false) {
-    return new Promise((resolve, reject) => {
-      const identifierCondition = id
-        ? '(LOWER(email) = ? OR id = ?)'
-        : 'LOWER(email) = ?'
+    const identifierCondition = id
+      ? '(LOWER(email) = ? OR id = ?)'
+      : 'LOWER(email) = ?'
 
-      const query = active
-        ? `SELECT * FROM ${this.tableName} WHERE ${identifierCondition} AND active = 1`
-        : `SELECT * FROM ${this.tableName} WHERE ${identifierCondition}`
+    const query = active
+      ? `SELECT * FROM ${this.tableName} WHERE ${identifierCondition} AND active = 1`
+      : `SELECT * FROM ${this.tableName} WHERE ${identifierCondition}`
 
-      const params = [String(emailOrId).toLowerCase()]
-      if (id) {
-        params.push(emailOrId)
-      }
-
-      this.db.get(query, params, (err, row) => {
-        if (err) return reject(err)
-        resolve(row)
-      })
-    })
+    const params = [String(emailOrId).toLowerCase()]
+    if (id) params.push(emailOrId)
+    return this.db.prepare(query).get(...params)
   }
 
   /**
@@ -398,16 +352,11 @@ class AdminUserRepository extends BaseRepository {
 
   /**
    *
-   * @returns {Promise<Boolean>}
+   * @returns {Boolean}
    */
   doesAdminDbHaveData () {
-    return new Promise((resolve, reject) => {
-      const query = `SELECT EXISTS(SELECT 1 FROM ${this.tableName}) as exist`
-      this.db.get(query, (err, row) => {
-        if (err) return reject(err)
-        resolve(row?.exist)
-      })
-    })
+    const query = `SELECT EXISTS(SELECT 1 FROM ${this.tableName}) as exist`
+    return this.db.prepare(query).get()?.exist
   }
 
   async remove (idOrEmail) {

@@ -1,11 +1,12 @@
 'use strict'
 
 const assert = require('assert')
+const { isBoolean } = require('@bitfinex/lib-js-util-base')
 
 class BaseRepository {
   /**
    *
-   * @param {import('sqlite3').Database} db
+   * @param {import('better-sqlite3').Database} db
    * @param {string} tableName
    * @param {Record<string, any>} conf
    */
@@ -20,61 +21,30 @@ class BaseRepository {
   /**
    *
    * @param {object} data
-   * @returns {Promise<data & {id: number}>}
+   * @returns {data & {id: number}}
    */
   add (data) {
-    return new Promise((resolve, reject) => {
-      const keys = Object.keys(data)
-
-      this.db.run(
-        `INSERT INTO ${this.tableName} (${keys.join(', ')}) VALUES (${Array(keys.length).fill('?').join(', ')})`,
-        Object.values(data),
-        function (err) {
-          if (err) return reject(err)
-
-          return resolve({ ...data, id: this.lastID })
-        }
-      )
-    })
+    const keys = Object.keys(data)
+    const params = Object.values(data).map(value => isBoolean(value) ? Number(value) : value)
+    const result = this.db.prepare(`INSERT INTO ${this.tableName} (${keys.join(', ')}) VALUES (${Array(keys.length).fill('?').join(', ')})`).run(...params)
+    return { ...data, id: result.lastInsertRowid }
   }
 
   /**
    *
-   * @returns {Promise<Array>}
+   * @returns {Array}
    */
   findAll () {
-    return new Promise((resolve, reject) => {
-      this.db.all(
-        `SELECT * FROM ${this.tableName}`,
-        [],
-        function (err, rows) {
-          if (err) return reject(err)
-
-          return resolve(rows)
-        }
-      )
-    })
+    return this.db.prepare(`SELECT * FROM ${this.tableName}`).all()
   }
 
   /**
-   *
    * @param {number} id
-   * @returns
+   * @return {object}
    */
   findById (id) {
     assert.ok(this.conf.useDB, 'Cannot use repository pattern if DB is not available')
-
-    return new Promise((resolve, reject) => {
-      this.db.get(
-        `SELECT * FROM ${this.tableName} WHERE id=?`,
-        [id],
-        function (err, row) {
-          if (err) return reject(err)
-
-          return resolve(row)
-        }
-      )
-    })
+    return this.db.prepare(`SELECT * FROM ${this.tableName} WHERE id=?`).get(id)
   }
 }
 

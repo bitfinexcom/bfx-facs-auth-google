@@ -8,7 +8,7 @@ class PrivilegeRepository extends BaseRepository {
 
   /**
    *
-   * @param {import('sqlite3').Database} db
+   * @param {import('better-sqlite3').Database} db
    * @param {{useDb: boolean}} conf
    */
   constructor (db, conf) {
@@ -19,7 +19,7 @@ class PrivilegeRepository extends BaseRepository {
    *
    * @param {object} param0
    * @param {string} param0.name
-   * @returns {Promise<{name: string}>}
+   * @returns {{name: string}}
    */
   add ({ name }) {
     const trimmedName = name?.trim()

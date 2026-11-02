@@ -46,7 +46,10 @@ const testAdminWithForms = {
 describe('Admin Users', () => {
   beforeEach(async () => {
     cleanup()
-    await new Promise((resolve) => authGoogle.start(resolve))
+    await new Promise((resolve, reject) => authGoogle.start((err) => {
+      if (err) return reject(err)
+      resolve()
+    }))
   })
 
   afterEach(async () => {
@@ -54,18 +57,15 @@ describe('Admin Users', () => {
   })
 
   it('should add admin and stringify forms field', async () => {
-    const admin = await authGoogle.addAdmin(testAdminWithForms)
+    const admin = authGoogle.addAdmin(testAdminWithForms)
     assert.strictEqual(typeof admin.id, 'number', 'admin id should be defined')
 
-    await new Promise((resolve) => authGoogle.db.get('SELECT * FROM admin_users WHERE email=?', [testAdminEmail], (err, row) => {
-      if (err) throw err
-      assert.equal(row.forms, JSON.stringify(testForms))
-      resolve()
-    }))
+    const row = authGoogle.db.prepare('SELECT * FROM admin_users WHERE email=?').get(testAdminEmail)
+    assert.equal(row.forms, JSON.stringify(testForms))
   })
 
   it('should return admin and with parsed form fields', async () => {
-    await authGoogle.addAdmin(testAdminWithForms)
+    authGoogle.addAdmin(testAdminWithForms)
 
     const res = await authGoogle.getAdmin(testAdminEmail)
 
@@ -85,36 +85,36 @@ describe('Admin Users', () => {
   })
 
   it('updateAdmin should validate passwordResetToken', async () => {
-    await authGoogle.addAdmin(adminPayload)
+    authGoogle.addAdmin(adminPayload)
     try {
-      await authGoogle.updateAdmin(adminPayload.email, { passwordResetToken: 40 })
+      authGoogle.updateAdmin(adminPayload.email, { passwordResetToken: 40 })
       throw new Error('SHOULD_NOT_REACH_THIS_POINT')
     } catch (err) {
       assert.strictEqual(err.message, 'passwordResetToken should be a string')
     }
 
     try {
-      await authGoogle.updateAdmin(adminPayload.email, { passwordResetToken: false })
+      authGoogle.updateAdmin(adminPayload.email, { passwordResetToken: false })
       throw new Error('SHOULD_NOT_REACH_THIS_POINT')
     } catch (err) {
       assert.strictEqual(err.message, 'passwordResetToken should be a string')
     }
 
-    const update = await authGoogle.updateAdmin(adminPayload.email, { passwordResetToken: 'sample_token' })
+    const update = authGoogle.updateAdmin(adminPayload.email, { passwordResetToken: 'sample_token' })
     assert.strictEqual(update.passwordResetToken, 'sample_token')
   })
 
   it('updateAdmin should validate passwordResetSentAt', async () => {
-    await authGoogle.addAdmin(adminPayload)
+    authGoogle.addAdmin(adminPayload)
     try {
-      await authGoogle.updateAdmin(adminPayload.email, { passwordResetSentAt: 'invalid date' })
+      authGoogle.updateAdmin(adminPayload.email, { passwordResetSentAt: 'invalid date' })
       throw new Error('SHOULD_NOT_REACH_THIS_POINT')
     } catch (err) {
       assert.strictEqual(err.message, 'passwordResetSentAt should be a valid date')
     }
 
     const now = new Date().toISOString()
-    const update = await authGoogle.updateAdmin(adminPayload.email, { passwordResetSentAt: now })
+    const update = authGoogle.updateAdmin(adminPayload.email, { passwordResetSentAt: now })
     assert.strictEqual(update.passwordResetSentAt, now)
   })
 
@@ -129,7 +129,7 @@ describe('Admin Users', () => {
     }
 
     it('should get active admin', async () => {
-      await authGoogle.addAdmin(adminPayload)
+      authGoogle.addAdmin(adminPayload)
 
       const getAdminResult = await authGoogle.getAdmin(adminPayload.email)
 
@@ -137,8 +137,8 @@ describe('Admin Users', () => {
     })
 
     it('should not get inactive admin', async () => {
-      await authGoogle.addAdmin(adminPayload)
-      await authGoogle.updateAdmin(adminPayload.email, { active: false })
+      authGoogle.addAdmin(adminPayload)
+      authGoogle.updateAdmin(adminPayload.email, { active: false })
 
       const getAdminResult = await authGoogle.getAdmin(adminPayload.email)
 
@@ -146,8 +146,8 @@ describe('Admin Users', () => {
     })
 
     it('should get inactive admin', async () => {
-      await authGoogle.addAdmin(adminPayload)
-      await authGoogle.updateAdmin(adminPayload.email, { active: false })
+      authGoogle.addAdmin(adminPayload)
+      authGoogle.updateAdmin(adminPayload.email, { active: false })
 
       const getAdminResult = await authGoogle.getAdmin(adminPayload.email, false)
 
@@ -155,7 +155,7 @@ describe('Admin Users', () => {
     })
 
     it('should get admin using uppercased email', async () => {
-      await authGoogle.addAdmin(adminPayload)
+      authGoogle.addAdmin(adminPayload)
 
       const getAdminResult = await authGoogle.getAdmin(adminPayload.email.toUpperCase())
 
@@ -163,7 +163,7 @@ describe('Admin Users', () => {
     })
 
     it('should get admin using id', async () => {
-      const adminCreationResult = await authGoogle.addAdmin(adminPayload)
+      const adminCreationResult = authGoogle.addAdmin(adminPayload)
 
       const getAdminResult = await authGoogle.getAdmin(adminCreationResult.id, true, true)
 
@@ -173,7 +173,7 @@ describe('Admin Users', () => {
 
   describe('fetchMotivationsPrivilege permission', () => {
     it('should add admin successfully with fetchMotivationsPrivilege', async () => {
-      await authGoogle.addAdmin({
+      authGoogle.addAdmin({
         ...testAdminWithForms,
         fetchMotivationsPrivilege: true
       })
@@ -185,7 +185,7 @@ describe('Admin Users', () => {
 
     it('should throw error when adding admin with fetchMotivationsPrivilege not being boolean', async () => {
       try {
-        await authGoogle.addAdmin({
+        authGoogle.addAdmin({
           ...testAdminWithForms,
           fetchMotivationsPrivilege: 'not boolean'
         })
@@ -197,11 +197,11 @@ describe('Admin Users', () => {
     })
 
     it('should edit admin successfully with fetchMotivationsPrivilege', async () => {
-      await authGoogle.addAdmin(testAdminWithForms)
+      authGoogle.addAdmin(testAdminWithForms)
       const adminBeforeUpdate = await authGoogle.getAdmin(testAdminEmail)
       assert.ok(!adminBeforeUpdate.fetchMotivationsPrivilege)
 
-      await authGoogle.updateAdmin(testAdminEmail, {
+      authGoogle.updateAdmin(testAdminEmail, {
         ...omit(testAdminWithForms, ['email', 'password', 'forms']),
         fetchMotivationsPrivilege: true
       })
@@ -210,12 +210,12 @@ describe('Admin Users', () => {
     })
 
     it('should throw error when editing admin with fetchMotivationsPrivilege not being boolean', async () => {
-      await authGoogle.addAdmin(testAdminWithForms)
+      authGoogle.addAdmin(testAdminWithForms)
       const adminBeforeUpdate = await authGoogle.getAdmin(testAdminEmail)
       assert.ok(!adminBeforeUpdate.fetchMotivationsPrivilege)
 
       try {
-        await authGoogle.updateAdmin(testAdminEmail, {
+        authGoogle.updateAdmin(testAdminEmail, {
           ...omit(testAdminWithForms, ['email', 'password', 'forms']),
           fetchMotivationsPrivilege: 'not boolean'
         })
@@ -227,7 +227,7 @@ describe('Admin Users', () => {
     })
 
     it('should return true when admin has fetch motivations privilege', async () => {
-      await authGoogle.addAdmin({
+      authGoogle.addAdmin({
         ...testAdminWithForms,
         level: 1,
         fetchMotivationsPrivilege: true
@@ -239,7 +239,7 @@ describe('Admin Users', () => {
     })
 
     it('should return false when admin does not have fetch motivations privilege', async () => {
-      await authGoogle.addAdmin({
+      authGoogle.addAdmin({
         ...testAdminWithForms,
         level: 1,
         fetchMotivationsPrivilege: false
@@ -261,17 +261,14 @@ describe('Admin Users', () => {
     }
 
     it('should add admin and stringify whitelistedIps in the DB', async () => {
-      await authGoogle.addAdmin(adminWithIps)
+      authGoogle.addAdmin(adminWithIps)
 
-      await new Promise((resolve) => authGoogle.db.get('SELECT * FROM admin_users WHERE email=?', [testAdminEmail], (err, row) => {
-        if (err) throw err
-        assert.equal(row.whitelistedIps, JSON.stringify(ips))
-        resolve()
-      }))
+      const row = authGoogle.db.prepare('SELECT * FROM admin_users WHERE email=?').get(testAdminEmail)
+      assert.equal(row.whitelistedIps, JSON.stringify(ips))
     })
 
     it('should return whitelistedIps as a parsed array from getAdmin', async () => {
-      await authGoogle.addAdmin(adminWithIps)
+      authGoogle.addAdmin(adminWithIps)
 
       const res = await authGoogle.getAdmin(testAdminEmail)
 
@@ -279,7 +276,7 @@ describe('Admin Users', () => {
     })
 
     it('should return undefined whitelistedIps when not set on admin', async () => {
-      await authGoogle.addAdmin({ email: testAdminEmail, password: 'test123', level: 0 })
+      authGoogle.addAdmin({ email: testAdminEmail, password: 'test123', level: 0 })
 
       const res = await authGoogle.getAdmin(testAdminEmail)
 
@@ -288,7 +285,7 @@ describe('Admin Users', () => {
 
     it('should throw when adding admin with whitelistedIps not being an array', async () => {
       try {
-        await authGoogle.addAdmin({ ...adminWithIps, whitelistedIps: '192.168.1.1' })
+        authGoogle.addAdmin({ ...adminWithIps, whitelistedIps: '192.168.1.1' })
         throw new Error('SHOULD_NOT_REACH_HERE')
       } catch (e) {
         assert.ok(e instanceof assert.AssertionError)
@@ -297,12 +294,12 @@ describe('Admin Users', () => {
     })
 
     it('should update whitelistedIps and return the new list from getAdmin', async () => {
-      await authGoogle.addAdmin(adminWithIps)
+      authGoogle.addAdmin(adminWithIps)
       const adminBeforeUpdate = await authGoogle.getAdmin(testAdminEmail)
       assert.deepEqual(adminBeforeUpdate.whitelistedIps, ips)
 
       const updatedIps = ['203.0.113.10']
-      await authGoogle.updateAdmin(testAdminEmail, { whitelistedIps: updatedIps })
+      authGoogle.updateAdmin(testAdminEmail, { whitelistedIps: updatedIps })
 
       const adminAfterUpdate = await authGoogle.getAdmin(testAdminEmail)
       assert.deepEqual(adminAfterUpdate.whitelistedIps, updatedIps)
@@ -310,7 +307,7 @@ describe('Admin Users', () => {
   })
 
   it('updateAdminPassword should change the user password if the old password is valid', async () => {
-    await authGoogle.addAdmin({ ...adminPayload })
+    authGoogle.addAdmin({ ...adminPayload })
 
     let resp
     const cb = (_, res) => {
@@ -329,10 +326,9 @@ describe('Admin Users', () => {
     assert.ok(resp.active)
     assert.ok(Array.isArray(resp.privileges))
 
-    const passwordResetToken = 'sample_token'
     const newPassword = 'newPassword'
     assert.ok(adminPayload.password !== newPassword)
-    const successful = await authGoogle.updateAdminPassword(adminPayload.email, newPassword, adminPayload.password)
+    const successful = authGoogle.updateAdminPassword(adminPayload.email, newPassword, adminPayload.password)
     assert.strictEqual(successful, true)
 
     await authGoogle.loginAdmin({
@@ -351,37 +347,37 @@ describe('Admin Users', () => {
 
   it('updateAdminPassword should validate the params', async () => {
     try {
-      await authGoogle.updateAdminPassword(1)
+      authGoogle.updateAdminPassword(1)
       throw new Error('SHOULD_NOT_REACH_THIS_POINT')
     } catch (err) {
       assert.strictEqual(err.message, 'Email is required')
     }
 
     try {
-      await authGoogle.updateAdminPassword(adminPayload.email)
+      authGoogle.updateAdminPassword(adminPayload.email)
       throw new Error('SHOULD_NOT_REACH_THIS_POINT')
     } catch (err) {
       assert.strictEqual(err.message, 'New Password is required')
     }
 
     try {
-      await authGoogle.updateAdminPassword(adminPayload.email, 'newPassword')
+      authGoogle.updateAdminPassword(adminPayload.email, 'newPassword')
       throw new Error('SHOULD_NOT_REACH_THIS_POINT')
     } catch (err) {
       assert.strictEqual(err.message, 'Old Password is required')
     }
 
     try {
-      await authGoogle.updateAdminPassword(adminPayload.email, 'newPassword', adminPayload.password)
+      authGoogle.updateAdminPassword(adminPayload.email, 'newPassword', adminPayload.password)
       throw new Error('SHOULD_NOT_REACH_THIS_POINT')
     } catch (err) {
       assert.strictEqual(err.message, 'ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
     }
 
-    await authGoogle.addAdmin({ ...adminPayload })
+    authGoogle.addAdmin({ ...adminPayload })
 
     try {
-      await authGoogle.updateAdminPassword(adminPayload.email, 'newPassword', 'wrongPassword')
+      authGoogle.updateAdminPassword(adminPayload.email, 'newPassword', 'wrongPassword')
       throw new Error('SHOULD_NOT_REACH_THIS_POINT')
     } catch (err) {
       assert.strictEqual(err.message, 'INVALID_PASSWORD')
@@ -389,7 +385,7 @@ describe('Admin Users', () => {
   })
 
   it('resetPassword should reset the user password if the token is valid', async () => {
-    await authGoogle.addAdmin({ ...adminPayload })
+    authGoogle.addAdmin({ ...adminPayload })
 
     let resp
     const cb = (_, res) => {
@@ -409,12 +405,12 @@ describe('Admin Users', () => {
     assert.ok(Array.isArray(resp.privileges))
 
     const passwordResetToken = 'sample_token'
-    const update = await authGoogle.updateAdmin(adminPayload.email, { passwordResetToken, passwordResetSentAt: new Date().toISOString() })
+    const update = authGoogle.updateAdmin(adminPayload.email, { passwordResetToken, passwordResetSentAt: new Date().toISOString() })
     assert.strictEqual(update.passwordResetToken, 'sample_token')
 
     const newPassword = 'newPassword'
     assert.ok(adminPayload.password !== newPassword)
-    const successful = await authGoogle.resetAdminPassword(adminPayload.email, newPassword, passwordResetToken)
+    const successful = authGoogle.resetAdminPassword(adminPayload.email, newPassword, passwordResetToken)
     assert.strictEqual(successful, true)
 
     await authGoogle.loginAdmin({
@@ -433,14 +429,14 @@ describe('Admin Users', () => {
 
   it('resetPassword should validate the params', async () => {
     try {
-      await authGoogle.resetAdminPassword(1)
+      authGoogle.resetAdminPassword(1)
       throw new Error('SHOULD_NOT_REACH_THIS_POINT')
     } catch (err) {
       assert.strictEqual(err.message, 'Email is required')
     }
 
     try {
-      await authGoogle.resetAdminPassword(adminPayload.email)
+      authGoogle.resetAdminPassword(adminPayload.email)
       throw new Error('SHOULD_NOT_REACH_THIS_POINT')
     } catch (err) {
       assert.strictEqual(err.message, 'New Password is required')
@@ -448,29 +444,29 @@ describe('Admin Users', () => {
 
     const passwordResetToken = 'sample_token'
     try {
-      await authGoogle.resetAdminPassword(adminPayload.email, 'newPassword', passwordResetToken)
+      authGoogle.resetAdminPassword(adminPayload.email, 'newPassword', passwordResetToken)
       throw new Error('SHOULD_NOT_REACH_THIS_POINT')
     } catch (err) {
       assert.strictEqual(err.message, 'ADMIN_ACCOUNT_DOES_NOT_EXIST_OR_IS_NOT_ACTIVE')
     }
 
-    await authGoogle.addAdmin({ ...adminPayload })
+    authGoogle.addAdmin({ ...adminPayload })
 
     try {
-      await authGoogle.resetAdminPassword(adminPayload.email, 'newPassword', passwordResetToken)
+      authGoogle.resetAdminPassword(adminPayload.email, 'newPassword', passwordResetToken)
       throw new Error('SHOULD_NOT_REACH_THIS_POINT')
     } catch (err) {
       assert.strictEqual(err.message, 'INVALID_passwordResetToken')
     }
 
-    const update = await authGoogle.updateAdmin(adminPayload.email, {
+    const update = authGoogle.updateAdmin(adminPayload.email, {
       passwordResetToken,
       passwordResetSentAt: new Date(2020, 1, 1).toISOString() // expired date
     })
     assert.strictEqual(update.passwordResetToken, 'sample_token')
 
     try {
-      await authGoogle.resetAdminPassword(adminPayload.email, 'newPassword', passwordResetToken)
+      authGoogle.resetAdminPassword(adminPayload.email, 'newPassword', passwordResetToken)
       throw new Error('SHOULD_NOT_REACH_THIS_POINT')
     } catch (err) {
       assert.strictEqual(err.message, 'RESET_LINK_EXPIRED')

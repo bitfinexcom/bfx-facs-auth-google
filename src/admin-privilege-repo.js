@@ -9,7 +9,7 @@ class AdminPrivilegeRepository extends BaseRepository {
 
   /**
    *
-   * @param {import('sqlite3').Database} db
+   * @param {import('better-sqlite3').Database} db
    * @param {{useDb: boolean}} conf
    */
   constructor (db, conf) {
@@ -33,53 +33,34 @@ class AdminPrivilegeRepository extends BaseRepository {
    *
    * @param {number} adminId
    * @param {string} privilege
-   * @returns {Promise<object>}
+   * @returns {object}
    */
   findAdminPrivilege (adminId, privilege) {
-    return new Promise((resolve, reject) => {
-      this.db.get(
-        `SELECT ap.admin_id, ap.privilege_id, p.name as privilege_name
+    const query = `SELECT ap.admin_id, ap.privilege_id, p.name as privilege_name
         FROM ${this.tableName} ap
         JOIN ${PrivilegeRepository.tableName} p ON p.id = ap.privilege_id
         WHERE ap.admin_id=? AND p.name=?
-        LIMIT 1;`,
-        [adminId, privilege],
-        function (err, row) {
-          if (err) return reject(err)
-
-          return resolve(row)
-        }
-      )
-    })
+        LIMIT 1;`
+    return this.db.prepare(query).get(adminId, privilege)
   }
 
   getAdminPrivileges (adminId) {
-    return new Promise((resolve, reject) => {
-      const query = `
+    const query = `
         SELECT p.id, p.name
         FROM ${this.tableName} ap
         JOIN ${PrivilegeRepository.tableName} p ON p.id = ap.privilege_id
         WHERE ap.admin_id = ?;
       `
-      this.db.all(query, [adminId], function (err, rows) {
-        if (err) return reject(err)
-        return resolve(rows)
-      })
-    })
+    return this.db.prepare(query).all(adminId)
   }
 
   remove (adminId, privilegeId) {
-    return new Promise((resolve, reject) => {
-      const query = `
+    const query = `
         DELETE FROM ${this.tableName}
         WHERE admin_id = ?
         AND privilege_id = ?;
       `
-      this.db.run(query, [adminId, privilegeId], function (err, rows) {
-        if (err) return reject(err)
-        return resolve(rows)
-      })
-    })
+    return this.db.prepare(query).run(adminId, privilegeId)
   }
 }
 

@@ -3,14 +3,12 @@
 const path = require('path')
 const fs = require('fs').promises
 const assert = require('assert')
-const _ = require('lodash')
 const async = require('async')
 const crypto = require('crypto')
-const DbBase = require('@bitfinex/bfx-facs-db-sqlite')
-const uuidv4 = require('uuid/v4')
-const { cloneDeep } = require('@bitfinex/lib-js-util-base')
+const DbBase = require('@bitfinex/bfx-facs-db-better-sqlite')
+const { cloneDeep, pick } = require('@bitfinex/lib-js-util-base')
 const { google } = require('googleapis')
-const migrations = require('./migrations')
+const runMigrations = require('./migrations')
 const AdminUserRepository = require('./src/admin-user-repo')
 const PrivilegeRepository = require('./src/privilege-repo')
 const AdminPrivilegeRepository = require('./src/admin-privilege-repo')
@@ -49,9 +47,9 @@ async function verify (password, hash) {
 class GoogleAuth extends DbBase {
   constructor (caller, opts = {}, ctx) {
     opts.name = 'auth-google'
-    opts.runSqlAtStart = [
-      ...AdminUserRepository.runSqlAtStart
-    ]
+    // opts.runSqlAtStart = [
+    //   ...AdminUserRepository.runSqlAtStart
+    // ]
     super(caller, opts, ctx)
 
     this.name = 'auth-google'
@@ -160,7 +158,7 @@ class GoogleAuth extends DbBase {
     async.series([
       async () => {
         if (this.conf.useDB) {
-          const db = this.opts.db
+          const db = this.opts.dbPath
           const dbDir = path.dirname(db)
           try {
             await fs.access(dbDir)
@@ -178,7 +176,8 @@ class GoogleAuth extends DbBase {
         this.adminPrivilegeRepo = new AdminPrivilegeRepository(this.db, this.conf)
       },
       cb => {
-        this.runMigrations(migrations, cb)
+        runMigrations(this.db)
+        cb()
       },
       async () => {
         await this._saveAdminsFromConfig()
@@ -257,13 +256,13 @@ class GoogleAuth extends DbBase {
 
   async _createAdminToken (user, ip, level, extra = {}, cb) {
     const username = user
-    const token = 'ADM-' + uuidv4()
+    const token = 'ADM-' + crypto.randomUUID()
     const exp = new Date()
     exp.setHours(exp.getHours() + 8)
     const query = { username, token, ip, level, expires_at: exp }
     try {
       await this._createUniqueAndExpireDbToken(query)
-      const privileges = await this.adminPrivilegeRepo.getAdminPrivileges(extra.id)
+      const privileges = this.adminPrivilegeRepo.getAdminPrivileges(extra.id)
       return cb(null, { username, token, level, privileges, ...extra, expires_at: exp })
     } catch (e) {
       return cb(new Error('AUTH_FAC_ADMIN_TOKEN_CREATE_ERROR'))
@@ -408,7 +407,7 @@ class GoogleAuth extends DbBase {
   }
 
   async _whiteListEmail (sentEmail) {
-    const admin = await this._getAdmin(sentEmail)
+    const admin = this._getAdmin(sentEmail)
 
     if (!admin) return { valid: false }
 
@@ -424,12 +423,12 @@ class GoogleAuth extends DbBase {
   async _saveAdminsFromConfig () {
     const admins = this.conf.ADM_USERS
     if (!(admins && Array.isArray(admins))) return true
-    const adminDbHasData = await this.adminUserRepo.doesAdminDbHaveData()
+    const adminDbHasData = this.adminUserRepo.doesAdminDbHaveData()
     if (adminDbHasData) return true
 
     const tasks = admins.map(async (admin) => {
       const { email } = admin
-      const adm = await this._getAdmin(email, false)
+      const adm = this._getAdmin(email, false)
       if (adm) return adm
 
       return this.addAdmin(cloneDeep(admin))
@@ -440,27 +439,27 @@ class GoogleAuth extends DbBase {
 
   /**
    * @param { AdminUserRepository.AddAdminT } user
-   * @returns { Promise<AdminUserRepository.AddedAdminT> }
+   * @returns { AdminUserRepository.AddedAdminT }
    */
-  async addAdmin (user) {
+  addAdmin (user) {
     assert.ok(this.conf.useDB, 'Cannot add admins if DB is not available')
 
     return this.adminUserRepo.add(user)
   }
 
-  async updateAdmin (email, user) {
+  updateAdmin (email, user) {
     assert.ok(this.conf.useDB, 'Cannot update admins if DB is not available')
 
     return this.adminUserRepo.update(email, user)
   }
 
-  async updateAdminPassword (email, newPassword, oldPassword) {
+  updateAdminPassword (email, newPassword, oldPassword) {
     assert.ok(this.conf.useDB, 'Cannot update admins if DB is not available')
 
     return this.adminUserRepo.updatePassword(email, newPassword, oldPassword)
   }
 
-  async resetAdminPassword (email, newPassword, passwordResetToken) {
+  resetAdminPassword (email, newPassword, passwordResetToken) {
     assert.ok(this.conf.useDB, 'Cannot update admins if DB is not available')
 
     return this.adminUserRepo.resetPassword(email, newPassword, passwordResetToken)
@@ -473,7 +472,7 @@ class GoogleAuth extends DbBase {
   }
 
   async basicAuthAdmLogCheck (sentEmail, sentPassword) {
-    const admin = await this._getAdmin(sentEmail)
+    const admin = this._getAdmin(sentEmail)
 
     const isValidPassword = this.conf.useDB
       ? sentPassword && admin?.password && (await verify(sentPassword, admin.password))
@@ -497,48 +496,48 @@ class GoogleAuth extends DbBase {
   }
 
   async checkAdmAccessLevel (adminEmail, level) {
-    const admin = await this._getAdmin(adminEmail)
+    const admin = this._getAdmin(adminEmail)
     const valid = !!admin && admin.level <= level
     return valid
   }
 
   async checkAdmIsReadOnly (adminEmail) {
-    const admin = await this._getAdmin(adminEmail)
+    const admin = this._getAdmin(adminEmail)
     if (!admin) throw new Error('Searched admin was not found')
 
     return !!admin.readOnly
   }
 
   async checkAdmHasBlockPrivilege (adminEmail) {
-    const admin = await this._getAdmin(adminEmail)
+    const admin = this._getAdmin(adminEmail)
     if (!admin) throw new Error('Searched admin was not found')
 
     return !!(admin.level === 0 || admin.blockPrivilege)
   }
 
   async checkAdmHasAnalyticsPrivilege (adminEmail) {
-    const admin = await this._getAdmin(adminEmail)
+    const admin = this._getAdmin(adminEmail)
     if (!admin) throw new Error('Searched admin was not found')
 
     return !!(admin.level === 0 || admin.analyticsPrivilege)
   }
 
   async checkAdmHasManageAdminsPrivilege (adminEmail) {
-    const admin = await this._getAdmin(adminEmail)
+    const admin = this._getAdmin(adminEmail)
     if (!admin) throw new Error('Searched admin was not found')
 
     return !!(admin.level === 0 && admin.manageAdminsPrivilege)
   }
 
   async checkAdmHasCasesPrivilege (adminEmail) {
-    const admin = await this._getAdmin(adminEmail)
+    const admin = this._getAdmin(adminEmail)
     if (!admin) throw new Error('Searched admin was not found')
 
     return !!(admin.level === 0 && admin.casesPrivilege)
   }
 
   async checkAdmHasFetchMotivationsPrivilege (adminEmail) {
-    const admin = await this._getAdmin(adminEmail)
+    const admin = this._getAdmin(adminEmail)
     if (!admin) throw new Error('Searched admin was not found')
 
     return !!(admin.level === 0 || admin.fetchMotivationsPrivilege)
@@ -548,10 +547,10 @@ class GoogleAuth extends DbBase {
    * @param { string|number } emailOrId - Identifier used for searching the admin, it can be either the admin email address or its database id.
    * @param { boolean } [active=true] - Flag for considering only the active users, it is `true` by default. If `false`, it will search through inactive users too.
    * @param { boolean } [id=false] - Flag for searching as well by id criterion, it's `false` by default. If `true`, enables the mentioned behavior.
-   * @returns { Promise<AdminUserRepository.BaseAdminT & { timestamp: Date, active: boolean }> }
+   * @returns { AdminUserRepository.BaseAdminT & { timestamp: Date, active: boolean } }
    */
-  async getAdmin (emailOrId, active = true, id = false) {
-    const admin = await this._getAdmin(emailOrId, active, id)
+  getAdmin (emailOrId, active = true, id = false) {
+    const admin = this._getAdmin(emailOrId, active, id)
     const displayKeys = ['id', 'email', 'level', 'blockPrivilege', 'company',
       'analyticsPrivilege', 'manageAdminsPrivilege', 'casesPrivilege', 'fetchMotivationsPrivilege', 'readOnly', 'active', 'timestamp', AdminUserRepository.FORMS_FIELD, 'whitelistedIps']
 
@@ -562,11 +561,11 @@ class GoogleAuth extends DbBase {
     }
 
     return admin
-      ? _.pick(admin, displayKeys)
+      ? pick(admin, displayKeys)
       : admin
   }
 
-  async _getAdmin (emailOrId, active = true, id = false) {
+  _getAdmin (emailOrId, active = true, id = false) {
     if (!emailOrId) return false
 
     return this.conf.useDB
@@ -603,7 +602,7 @@ class GoogleAuth extends DbBase {
   }
 
   async hasPassword (email) {
-    const admin = await this._getAdmin(email)
+    const admin = this._getAdmin(email)
     return !!admin?.password
   }
 
@@ -622,10 +621,10 @@ class GoogleAuth extends DbBase {
    * @returns {Promise<{ admin: emailOrId, privilege: string }>}
    */
   async assignAdminPrivilege (emailOrId, privilegeId) {
-    const admin = await this.adminUserRepo.getAdmin(emailOrId, true, true)
+    const admin = this.adminUserRepo.getAdmin(emailOrId, true, true)
     if (!admin) throw new Error('INVALID_ADMIN')
 
-    const privilege = await this.privilegeRepo.findById(privilegeId)
+    const privilege = this.privilegeRepo.findById(privilegeId)
     if (!privilege) throw new Error('INVALID_PRIVILEGE_ID')
 
     await this.adminPrivilegeRepo.add({ adminId: admin.id, privilegeId: privilege.id })
@@ -639,10 +638,10 @@ class GoogleAuth extends DbBase {
    * @returns {Promise<{ admin: emailOrId, privilege: string }>}
    */
   async unAssignAdminPrivilege (emailOrId, privilegeId) {
-    const admin = await this.adminUserRepo.getAdmin(emailOrId, true, true)
+    const admin = this.adminUserRepo.getAdmin(emailOrId, true, true)
     if (!admin) throw new Error('INVALID_ADMIN')
 
-    const privilege = await this.privilegeRepo.findById(privilegeId)
+    const privilege = this.privilegeRepo.findById(privilegeId)
     if (!privilege) throw new Error('INVALID_PRIVILEGE_ID')
 
     await this.adminPrivilegeRepo.remove(admin.id, privilege.id)
@@ -656,10 +655,10 @@ class GoogleAuth extends DbBase {
    * @returns {Promise<Boolean>}
    */
   async checkAdminHasRequiredPrivilege (emailOrId, privilege) {
-    const admin = await this.adminUserRepo.getAdmin(emailOrId, true, true)
+    const admin = this.adminUserRepo.getAdmin(emailOrId, true, true)
     if (!admin) throw new Error('INVALID_ADMIN')
 
-    const adminPrivilege = await this.adminPrivilegeRepo.findAdminPrivilege(admin.id, privilege)
+    const adminPrivilege = this.adminPrivilegeRepo.findAdminPrivilege(admin.id, privilege)
     return Boolean(adminPrivilege)
   }
 
@@ -670,10 +669,10 @@ class GoogleAuth extends DbBase {
    * @returns {Promise<AdminUserRepository.BaseAdminT & {timestamp: Date, active: boolean, privileges: Array<{id: number, name: string}>}>}
    */
   async getAdminWithPrivileges (email, active = true, id = false) {
-    const admin = await this.getAdmin(email, active, id)
+    const admin = this.getAdmin(email, active, id)
     if (!admin) return admin
 
-    const privileges = await this.adminPrivilegeRepo.getAdminPrivileges(admin.id)
+    const privileges = this.adminPrivilegeRepo.getAdminPrivileges(admin.id)
 
     return { ...admin, privileges }
   }
