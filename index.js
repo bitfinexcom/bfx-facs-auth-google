@@ -7,7 +7,6 @@ const _ = require('lodash')
 const async = require('async')
 const crypto = require('crypto')
 const DbBase = require('@bitfinex/bfx-facs-db-sqlite')
-const { v4: uuidv4 } = require('uuid')
 const { cloneDeep } = require('@bitfinex/lib-js-util-base')
 const { google } = require('googleapis')
 const migrations = require('./migrations')
@@ -257,7 +256,7 @@ class GoogleAuth extends DbBase {
 
   async _createAdminToken (user, ip, level, extra = {}, cb) {
     const username = user
-    const token = 'ADM-' + uuidv4()
+    const token = 'ADM-' + crypto.randomUUID()
     const exp = new Date()
     exp.setHours(exp.getHours() + 8)
     const query = { username, token, ip, level, expires_at: exp }

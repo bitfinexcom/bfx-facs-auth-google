@@ -16,8 +16,7 @@
     "@bitfinex/lib-js-util-base": "2.0.2",
     "async": "^2.6.4",
     "googleapis": "^189.0.0",
-    "lodash": "^4.17.21",
-    "uuid": "^14.0.3"
+    "lodash": "^4.17.21"
   },
   "overrides": {
     "sqlite3": "^6.0.1",
