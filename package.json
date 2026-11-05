@@ -12,7 +12,7 @@
     "oath"
   ],
   "dependencies": {
-    "@bitfinex/bfx-facs-db-sqlite": "1.0.0",
+    "@bitfinex/bfx-facs-db-sqlite": "git+https://github.com/bitfinexcom/bfx-facs-db-sqlite.git#v1.0.0",
     "@bitfinex/lib-js-util-base": "2.0.2",
     "async": "^2.6.4",
     "googleapis": "^189.0.0",
