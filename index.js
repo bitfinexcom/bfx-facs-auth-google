@@ -3,11 +3,10 @@
 const path = require('path')
 const fs = require('fs').promises
 const assert = require('assert')
-const _ = require('lodash')
 const async = require('async')
 const crypto = require('crypto')
 const DbBase = require('@bitfinex/bfx-facs-db-sqlite')
-const { cloneDeep } = require('@bitfinex/lib-js-util-base')
+const { cloneDeep, pick } = require('@bitfinex/lib-js-util-base')
 const { google } = require('googleapis')
 const migrations = require('./migrations')
 const AdminUserRepository = require('./src/admin-user-repo')
@@ -561,7 +560,7 @@ class GoogleAuth extends DbBase {
     }
 
     return admin
-      ? _.pick(admin, displayKeys)
+      ? pick(admin, displayKeys)
       : admin
   }
 
