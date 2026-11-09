@@ -14,7 +14,7 @@
   "dependencies": {
     "@bitfinex/bfx-facs-base": "git+https://github.com/bitfinexcom/bfx-facs-base.git#v2.0.0",
     "@bitfinex/bfx-facs-db-sqlite": "git+https://github.com/bitfinexcom/bfx-facs-db-sqlite.git#v2.0.0",
-    "@bitfinex/lib-js-util-base": "3.0.0",
+    "@bitfinex/lib-js-util-base": "git+https://github.com/bitfinexcom/lib-js-util-base.git#v3.0.0",
     "async": "^3.2.6",
     "googleapis": "^189.0.0"
   },
