@@ -1,6 +1,6 @@
 {
   "name": "@bitfinex/bfx-facs-auth-google",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": false,
   "description": "Bitfinex Google Oauth Facility",
   "author": {
@@ -15,7 +15,7 @@
     "@bitfinex/bfx-facs-base": "git+https://github.com/bitfinexcom/bfx-facs-base.git#v2.0.0",
     "@bitfinex/bfx-facs-db-sqlite": "git+https://github.com/bitfinexcom/bfx-facs-db-sqlite.git#v2.0.0",
     "@bitfinex/lib-js-util-base": "3.0.0",
-    "async": "^2.6.4",
+    "async": "^3.2.6",
     "googleapis": "^189.0.0"
   },
   "engines": {
@@ -43,11 +43,10 @@
     }
   ],
   "scripts": {
-    "test": "npm run lint && npm run unit",
-    "unit": "brittle-node test/*.js",
+    "test": "npm run lint && npm run test:unit",
+    "test:unit": "brittle-node test/*.js",
     "lint": "bfx-lint-js .",
-    "lint:fix": "bfx-lint-js . --fix",
-    "startSimulatedEnviroment": "node test/simulate/simulate-enviroment.js"
+    "lint:fix": "bfx-lint-js . --fix"
   },
   "devDependencies": {
     "@bitfinex/lint-js": "^1.1.0",
