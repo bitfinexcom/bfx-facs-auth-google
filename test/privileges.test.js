@@ -123,7 +123,7 @@ test('should return an admin with their associated privileges', async (t) => {
   await authGoogle.assignAdminPrivilege(adminPayload.email, privilege.id)
 
   const res = await authGoogle.getAdminWithPrivileges(adminPayload.email)
-  assert.deepStrictEqual(pick(res, ['email', 'level', 'active', 'privileges']), {
+  assert.deepStrictEqual({ ...pick(res, ['email', 'level', 'active', 'privileges']) }, {
     email: adminPayload.email,
     level: adminPayload.level,
     active: 1,

@@ -338,11 +338,7 @@ class GoogleAuth extends DbBase {
     // Mobile apps don't need it since they use ID tokens directly
     const redirectUri = redirectUriKey ? redirectUris?.[redirectUriKey] : undefined
 
-    return new google.auth.OAuth2(
-      clientId,
-      clientSecret,
-      redirectUri
-    )
+    return new google.auth.OAuth2({ clientId, clientSecret, redirectUri })
   }
 
   /**
@@ -560,7 +556,7 @@ class GoogleAuth extends DbBase {
     }
 
     return admin
-      ? pick(admin, displayKeys)
+      ? { ...pick(admin, displayKeys) }
       : admin
   }
 
