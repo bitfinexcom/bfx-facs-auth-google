@@ -3,12 +3,10 @@
 const path = require('path')
 const fs = require('fs').promises
 const assert = require('assert')
-const _ = require('lodash')
 const async = require('async')
 const crypto = require('crypto')
 const DbBase = require('@bitfinex/bfx-facs-db-sqlite')
-const uuidv4 = require('uuid/v4')
-const { cloneDeep } = require('@bitfinex/lib-js-util-base')
+const { cloneDeep, pick } = require('@bitfinex/lib-js-util-base')
 const { google } = require('googleapis')
 const migrations = require('./migrations')
 const AdminUserRepository = require('./src/admin-user-repo')
@@ -257,7 +255,7 @@ class GoogleAuth extends DbBase {
 
   async _createAdminToken (user, ip, level, extra = {}, cb) {
     const username = user
-    const token = 'ADM-' + uuidv4()
+    const token = 'ADM-' + crypto.randomUUID()
     const exp = new Date()
     exp.setHours(exp.getHours() + 8)
     const query = { username, token, ip, level, expires_at: exp }
@@ -340,11 +338,7 @@ class GoogleAuth extends DbBase {
     // Mobile apps don't need it since they use ID tokens directly
     const redirectUri = redirectUriKey ? redirectUris?.[redirectUriKey] : undefined
 
-    return new google.auth.OAuth2(
-      clientId,
-      clientSecret,
-      redirectUri
-    )
+    return new google.auth.OAuth2({ clientId, clientSecret, redirectUri })
   }
 
   /**
@@ -562,7 +556,7 @@ class GoogleAuth extends DbBase {
     }
 
     return admin
-      ? _.pick(admin, displayKeys)
+      ? { ...pick(admin, displayKeys) }
       : admin
   }
 
