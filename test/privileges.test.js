@@ -1,6 +1,5 @@
 'use strict'
 
-const assert = require('assert')
 const { promisify } = require('util')
 const { pick } = require('@bitfinex/lib-js-util-base')
 const brittleTest = require('brittle')
@@ -41,12 +40,12 @@ const test = (name, options, fn) => {
 
 test('should add privilege', async (t) => {
   const res = await authGoogle.addPrivilege(testPrivilege)
-  assert.strictEqual(res.name, testPrivilege)
+  t.is(res.name, testPrivilege)
 
   await new Promise((resolve) => authGoogle.db.get('SELECT * FROM privileges WHERE name=?', [testPrivilege], (err, row) => {
     if (err) throw err
-    assert.strictEqual(typeof row.id, 'number')
-    assert.equal(row.name, testPrivilege)
+    t.is(typeof row.id, 'number')
+    t.is(row.name, testPrivilege)
     resolve()
   }))
 })
@@ -54,8 +53,8 @@ test('should add privilege', async (t) => {
 test('should get all privileges', async (t) => {
   await authGoogle.addPrivilege(testPrivilege)
   const res = await authGoogle.getAllPrivileges()
-  assert.strictEqual(res.length, 1)
-  assert.deepStrictEqual(res, [{ id: 1, name: testPrivilege }])
+  t.is(res.length, 1)
+  t.alike(res, [{ id: 1, name: testPrivilege }])
 })
 
 test('should assign privilege to admin', async (t) => {
@@ -65,7 +64,7 @@ test('should assign privilege to admin', async (t) => {
   const [privilege] = await authGoogle.getAllPrivileges()
 
   const res = await authGoogle.assignAdminPrivilege(adminPayload.email, privilege.id)
-  assert.deepStrictEqual(res, {
+  t.alike(res, {
     admin: savedAdmin.email,
     privilege: privilege.name
   })
@@ -78,13 +77,13 @@ test('should unassign privilege from admin', async (t) => {
   const [privilege] = await authGoogle.getAllPrivileges()
 
   const assigned = await authGoogle.assignAdminPrivilege(adminPayload.email, privilege.id)
-  assert.deepStrictEqual(assigned, {
+  t.alike(assigned, {
     admin: savedAdmin.email,
     privilege: privilege.name
   })
 
   const unassigned = await authGoogle.unAssignAdminPrivilege(adminPayload.email, privilege.id)
-  assert.deepStrictEqual(unassigned, {
+  t.alike(unassigned, {
     admin: savedAdmin.email,
     privilege: privilege.name
   })
@@ -99,7 +98,7 @@ test('should throw error when assigning privilege if admin does not exist', asyn
     await authGoogle.assignAdminPrivilege(adminPayload.email, privilege.id)
     throw new Error('SHOULD_NOT_REACH_THIS_POINT')
   } catch (err) {
-    assert.strictEqual(err.message, 'INVALID_ADMIN')
+    t.is(err.message, 'INVALID_ADMIN')
   }
 })
 
@@ -110,7 +109,7 @@ test('should throw error when assigning privilege if privilege does not exist', 
     await authGoogle.assignAdminPrivilege(adminPayload.email, 1)
     throw new Error('SHOULD_NOT_REACH_THIS_POINT')
   } catch (err) {
-    assert.strictEqual(err.message, 'INVALID_PRIVILEGE_ID')
+    t.is(err.message, 'INVALID_PRIVILEGE_ID')
   }
 })
 
@@ -123,7 +122,7 @@ test('should return an admin with their associated privileges', async (t) => {
   await authGoogle.assignAdminPrivilege(adminPayload.email, privilege.id)
 
   const res = await authGoogle.getAdminWithPrivileges(adminPayload.email)
-  assert.deepStrictEqual({ ...pick(res, ['email', 'level', 'active', 'privileges']) }, {
+  t.alike({ ...pick(res, ['email', 'level', 'active', 'privileges']) }, {
     email: adminPayload.email,
     level: adminPayload.level,
     active: 1,
@@ -140,10 +139,10 @@ test('should check if an admin has a required privilege', async (t) => {
   await authGoogle.assignAdminPrivilege(adminPayload.email, privilege.id)
 
   const hasPrivilege = await authGoogle.checkAdminHasRequiredPrivilege(adminPayload.email, privilege.name)
-  assert.deepStrictEqual(hasPrivilege, true)
+  t.alike(hasPrivilege, true)
 
   const missingPrivilege = await authGoogle.checkAdminHasRequiredPrivilege(adminPayload.email, 'INVALID:PRIVILEGE')
-  assert.deepStrictEqual(missingPrivilege, false)
+  t.alike(missingPrivilege, false)
 })
 
 test('deleting a privilege should cascade and unassign the associated assigned privileges', async (t) => {
@@ -155,13 +154,13 @@ test('deleting a privilege should cascade and unassign the associated assigned p
   await authGoogle.assignAdminPrivilege(adminPayload.email, privilege.id)
 
   const hasPrivilege = await authGoogle.checkAdminHasRequiredPrivilege(adminPayload.email, privilege.name)
-  assert.deepStrictEqual(hasPrivilege, true)
+  t.alike(hasPrivilege, true)
 
   const runSqlFn = promisify(authGoogle.db.run.bind(authGoogle.db))
   await runSqlFn(`DELETE FROM ${PrivilegeRepository.tableName} WHERE id=?`, [privilege.id])
 
   {
     const hasPrivilege = await authGoogle.checkAdminHasRequiredPrivilege(adminPayload.email, privilege.name)
-    assert.deepStrictEqual(hasPrivilege, false)
+    t.alike(hasPrivilege, false)
   }
 })
