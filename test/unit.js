@@ -475,3 +475,20 @@ test('resetPassword should validate the params', async (t) => {
     t.is(err.message, 'RESET_LINK_EXPIRED')
   }
 })
+
+brittleTest('loginAdmin should create a token for a config admin when useDB is off', async (t) => {
+  const noDbAuth = new AuthGoogle(caller, { conf: { ...conf, useDB: false } }, ctx)
+  await new Promise((resolve) => noDbAuth.start(resolve))
+  t.teardown(() => new Promise((resolve) => noDbAuth.stop(resolve)))
+
+  const [admin] = conf.ADM_USERS
+  const resp = await new Promise((resolve, reject) => {
+    noDbAuth.loginAdmin({
+      user: { username: admin.email, password: admin.password }
+    }, (err, res) => err ? reject(err) : resolve(res))
+  })
+
+  t.is(resp.username, admin.email)
+  t.is(typeof resp.token, 'string')
+  t.alike(resp.privileges, [])
+})
